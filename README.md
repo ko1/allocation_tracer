@@ -26,7 +26,16 @@ Or install it yourself as:
 
 ### Allocation tracing
 
-You can trace allocation information and you can get aggregated information.
+You can trace allocation and aggregate information. Information includes:
+
+    count - how many objects are created.
+    total_age - total age of objects which created here
+    max_age - age of longest living object created here
+    min_age - age of shortest living object created here
+
+Age of Object can be calculated by this formula: [current GC count] - [birth time GC count]
+
+For example:
 
 ```ruby
 require 'allocation_tracer'
