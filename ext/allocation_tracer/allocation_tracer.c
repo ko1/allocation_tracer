@@ -8,6 +8,8 @@
 #include "ruby/ruby.h"
 #include "ruby/debug.h"
 
+size_t rb_objspace_data_type_memsize(VALUE obj); /* in gc.c */
+
 static VALUE rb_mAllocationTracer;
 
 struct allocation_info {
@@ -16,6 +18,7 @@ struct allocation_info {
     VALUE flags;
     VALUE klass;
     size_t generation;
+    size_t size;
 
     /* allocation info */
     const char *path;
@@ -33,6 +36,7 @@ struct allocation_info {
 #define VAL_TOTAL_AGE (1<<2)
 #define VAL_MAX_AGE   (1<<3)
 #define VAL_MIN_AGE   (1<<4)
+#define VAL_MEMSIZE   (1<<5)
 
 struct traceobj_arg {
     int running;
@@ -199,6 +203,7 @@ newobj_i(VALUE tpval, void *data)
     VALUE obj = rb_tracearg_object(tparg);
     VALUE path = rb_tracearg_path(tparg);
     VALUE line = rb_tracearg_lineno(tparg);
+    VALUE klass = RBASIC_CLASS(obj);
     const char *path_cstr = RTEST(path) ? make_unique_str(arg->str_table, RSTRING_PTR(path), RSTRING_LEN(path)) : NULL;
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
@@ -215,7 +220,7 @@ newobj_i(VALUE tpval, void *data)
     info->next = NULL;
     info->living = 1;
     info->flags = RBASIC(obj)->flags;
-    info->klass = rb_class_real(RBASIC_CLASS(obj));
+    info->klass = RTEST(klass) ? rb_class_real(klass) : Qnil;
     info->generation = rb_gc_count();
 
     info->path = path_cstr;
@@ -240,8 +245,8 @@ aggregator_i(void *data)
 	struct allocation_info *next_info = info->next;
 	st_data_t key, val;
 	struct memcmp_key_data key_data;
-	int *val_buff;
-	int age = (int)(gc_count - info->generation);
+	size_t *val_buff;
+	size_t age = (int)(gc_count - info->generation);
 	int i;
 
 	i = 0;
@@ -270,7 +275,7 @@ aggregator_i(void *data)
 	    key = (st_data_t)key_buff;
 
 	    /* count, total age, max age, min age */
-	    val_buff = ALLOC_N(int, 4);
+	    val_buff = ALLOC_N(size_t, 4);
 	    val_buff[0] = val_buff[1] = 0;
 	    val_buff[2] = val_buff[3] = age;
 
@@ -279,7 +284,7 @@ aggregator_i(void *data)
 	    st_insert(arg->aggregate_table, (st_data_t)key_buff, (st_data_t)val_buff);
 	}
 	else {
-	    val_buff = (int *)val;
+	    val_buff = (size_t *)val;
 	}
 
 	val_buff[0] += 1;
@@ -293,8 +298,9 @@ aggregator_i(void *data)
 }
 
 static void
-move_to_freed_list(struct traceobj_arg *arg, struct allocation_info *info)
+move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
 {
+    if (arg->vals & VAL_MEMSIZE) info->size = rb_objspace_data_type_memsize(obj);
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
 }
@@ -312,7 +318,7 @@ freeobj_i(VALUE tpval, void *data)
     }
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
-	move_to_freed_list(arg, info);
+	move_to_freed_list(arg, obj, info);
 	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
     }
 }
@@ -382,7 +388,7 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
     struct traceobj_arg *arg = aar->arg;
     VALUE result = aar->result;
 
-    int *val_buff = (int *)val;
+    size_t *val_buff = (size_t *)val;
     struct memcmp_key_data *key_buff = (struct memcmp_key_data *)key;
     VALUE v = rb_ary_new3(4, INT2FIX(val_buff[0]), INT2FIX(val_buff[1]), INT2FIX(val_buff[2]), INT2FIX(val_buff[3]));
     VALUE k = rb_ary_new();
@@ -415,7 +421,7 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
     }
     if (arg->keys & KEY_CLASS) {
 	VALUE klass = key_buff->data[i++];
-	if (BUILTIN_TYPE(klass) == T_CLASS) {
+	if (RTEST(klass) && BUILTIN_TYPE(klass) == T_CLASS) {
 	    klass = rb_class_real(klass);
 	    rb_ary_push(k, klass);
 	    /* TODO: actually, it is dangerous code because klass can be sweeped */
@@ -436,7 +442,7 @@ aggregate_rest_object_i(st_data_t key, st_data_t val, void *data)
 {
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
     struct allocation_info *info = (struct allocation_info *)val;
-    move_to_freed_list(arg, info);
+    move_to_freed_list(arg, (VALUE)key, info);
     return ST_CONTINUE;
 }
 
