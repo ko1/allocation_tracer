@@ -34,8 +34,8 @@ struct allocation_info {
 
 #define VAL_COUNT     (1<<1)
 #define VAL_TOTAL_AGE (1<<2)
-#define VAL_MAX_AGE   (1<<3)
-#define VAL_MIN_AGE   (1<<4)
+#define VAL_MIN_AGE   (1<<3)
+#define VAL_MAX_AGE   (1<<4)
 #define VAL_MEMSIZE   (1<<5)
 
 struct traceobj_arg {
@@ -291,8 +291,8 @@ aggregator_i(void *data)
 
 	val_buff[0] += 1;
 	val_buff[1] += age;
-	if (val_buff[2] > age) val_buff[2] = age;
-	if (val_buff[3] < age) val_buff[3] = age;
+	if (val_buff[2] > age) val_buff[2] = age; /* min */
+	if (val_buff[3] < age) val_buff[3] = age; /* max */
 	val_buff[4] += info->memsize;
 
 	free_allocation_info(arg, info);
@@ -554,8 +554,8 @@ allocation_tracer_header(VALUE self)
 
     if (arg->vals & VAL_COUNT) rb_ary_push(ary, ID2SYM(rb_intern("count")));
     if (arg->vals & VAL_TOTAL_AGE) rb_ary_push(ary, ID2SYM(rb_intern("total_age")));
-    if (arg->vals & VAL_MAX_AGE) rb_ary_push(ary, ID2SYM(rb_intern("max_age")));
     if (arg->vals & VAL_MIN_AGE) rb_ary_push(ary, ID2SYM(rb_intern("min_age")));
+    if (arg->vals & VAL_MAX_AGE) rb_ary_push(ary, ID2SYM(rb_intern("max_age")));
     if (arg->vals & VAL_MEMSIZE) rb_ary_push(ary, ID2SYM(rb_intern("memsize")));
 
     return ary;
