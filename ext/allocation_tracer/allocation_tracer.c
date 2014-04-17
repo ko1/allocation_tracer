@@ -8,7 +8,7 @@
 #include "ruby/ruby.h"
 #include "ruby/debug.h"
 
-size_t rb_objspace_data_type_memsize(VALUE obj); /* in gc.c */
+size_t rb_obj_memsize_of(VALUE obj); /* in gc.c */
 
 static VALUE rb_mAllocationTracer;
 
@@ -18,7 +18,7 @@ struct allocation_info {
     VALUE flags;
     VALUE klass;
     size_t generation;
-    size_t size;
+    size_t memsize;
 
     /* allocation info */
     const char *path;
@@ -137,7 +137,7 @@ get_traceobj_arg(void)
 	tmp_trace_arg = ALLOC_N(struct traceobj_arg, 1);
 	tmp_trace_arg->running = 0;
 	tmp_trace_arg->keys = 0;
-	tmp_trace_arg->vals = VAL_COUNT | VAL_TOTAL_AGE | VAL_MAX_AGE | VAL_MIN_AGE;
+	tmp_trace_arg->vals = VAL_COUNT | VAL_TOTAL_AGE | VAL_MAX_AGE | VAL_MIN_AGE | VAL_MEMSIZE;
 	tmp_trace_arg->aggregate_table = st_init_table(&memcmp_hash_type);
 	tmp_trace_arg->object_table = st_init_numtable();
 	tmp_trace_arg->str_table = st_init_strtable();
@@ -275,9 +275,10 @@ aggregator_i(void *data)
 	    key = (st_data_t)key_buff;
 
 	    /* count, total age, max age, min age */
-	    val_buff = ALLOC_N(size_t, 4);
+	    val_buff = ALLOC_N(size_t, 5);
 	    val_buff[0] = val_buff[1] = 0;
 	    val_buff[2] = val_buff[3] = age;
+	    val_buff[4] = 0;
 
 	    if (arg->keys & KEY_PATH) keep_unique_str(arg->str_table, info->path);
 
@@ -291,6 +292,7 @@ aggregator_i(void *data)
 	val_buff[1] += age;
 	if (val_buff[2] > age) val_buff[2] = age;
 	if (val_buff[3] < age) val_buff[3] = age;
+	val_buff[4] += info->memsize;
 
 	free_allocation_info(arg, info);
 	info = next_info;
@@ -300,7 +302,7 @@ aggregator_i(void *data)
 static void
 move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
 {
-    if (arg->vals & VAL_MEMSIZE) info->size = rb_objspace_data_type_memsize(obj);
+    info->memsize = rb_obj_memsize_of(obj);
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
 }
@@ -390,7 +392,7 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 
     size_t *val_buff = (size_t *)val;
     struct memcmp_key_data *key_buff = (struct memcmp_key_data *)key;
-    VALUE v = rb_ary_new3(4, INT2FIX(val_buff[0]), INT2FIX(val_buff[1]), INT2FIX(val_buff[2]), INT2FIX(val_buff[3]));
+    VALUE v = rb_ary_new3(5, INT2FIX(val_buff[0]), INT2FIX(val_buff[1]), INT2FIX(val_buff[2]), INT2FIX(val_buff[3]), INT2FIX(val_buff[4]));
     VALUE k = rb_ary_new();
     int i = 0;
     static VALUE type_symbols[T_MASK] = {0};
@@ -553,6 +555,7 @@ allocation_tracer_header(VALUE self)
     if (arg->vals & VAL_TOTAL_AGE) rb_ary_push(ary, ID2SYM(rb_intern("total_age")));
     if (arg->vals & VAL_MAX_AGE) rb_ary_push(ary, ID2SYM(rb_intern("max_age")));
     if (arg->vals & VAL_MIN_AGE) rb_ary_push(ary, ID2SYM(rb_intern("min_age")));
+    if (arg->vals & VAL_MEMSIZE) rb_ary_push(ary, ID2SYM(rb_intern("memsize")));
 
     return ary;
 }
