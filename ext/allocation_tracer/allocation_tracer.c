@@ -15,7 +15,6 @@ struct allocation_info {
     int living;
     VALUE flags;
     VALUE klass;
-    const char *klass_path;
     size_t generation;
 
     /* allocation info */
@@ -188,7 +187,6 @@ static void
 free_allocation_info(struct traceobj_arg *arg, struct allocation_info *info)
 {
     delete_unique_str(arg->str_table, info->path);
-    delete_unique_str(arg->str_table, info->klass_path);
     ruby_xfree(info);
 }
 
@@ -199,12 +197,9 @@ newobj_i(VALUE tpval, void *data)
     struct allocation_info *info;
     rb_trace_arg_t *tparg = rb_tracearg_from_tracepoint(tpval);
     VALUE obj = rb_tracearg_object(tparg);
-    VALUE klass = RBASIC_CLASS(obj);
     VALUE path = rb_tracearg_path(tparg);
     VALUE line = rb_tracearg_lineno(tparg);
-    VALUE klass_path = (RTEST(klass) && !OBJ_FROZEN(klass)) ? rb_class_path_cached(klass) : Qnil;
     const char *path_cstr = RTEST(path) ? make_unique_str(arg->str_table, RSTRING_PTR(path), RSTRING_LEN(path)) : NULL;
-    const char *klass_path_cstr = RTEST(klass_path) ? make_unique_str(arg->str_table, RSTRING_PTR(klass_path), RSTRING_LEN(klass_path)) : NULL;
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
 	if (info->living) {
@@ -212,7 +207,6 @@ newobj_i(VALUE tpval, void *data)
 	}
 	/* reuse info */
 	delete_unique_str(arg->str_table, info->path);
-	delete_unique_str(arg->str_table, info->klass_path);
     }
     else {
 	info = create_allocation_info();
@@ -221,8 +215,7 @@ newobj_i(VALUE tpval, void *data)
     info->next = NULL;
     info->living = 1;
     info->flags = RBASIC(obj)->flags;
-    info->klass = klass;
-    info->klass_path = klass_path_cstr;
+    info->klass = rb_class_real(RBASIC_CLASS(obj));
     info->generation = rb_gc_count();
 
     info->path = path_cstr;
@@ -262,7 +255,7 @@ aggregator_i(void *data)
 	    key_data.data[i++] = (st_data_t)(info->flags & T_MASK);
 	}
 	if (arg->keys & KEY_CLASS) {
-	    key_data.data[i++] = (st_data_t)info->klass_path;
+	    key_data.data[i++] = info->klass;
 	}
 	key_data.n = i;
 	key = (st_data_t)&key_data;
@@ -282,7 +275,6 @@ aggregator_i(void *data)
 	    val_buff[2] = val_buff[3] = age;
 
 	    if (arg->keys & KEY_PATH) keep_unique_str(arg->str_table, info->path);
-	    if (arg->keys & KEY_CLASS) keep_unique_str(arg->str_table, info->klass_path);
 
 	    st_insert(arg->aggregate_table, (st_data_t)key_buff, (st_data_t)val_buff);
 	}
@@ -301,11 +293,10 @@ aggregator_i(void *data)
 }
 
 static void
-move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
+move_to_freed_list(struct traceobj_arg *arg, struct allocation_info *info)
 {
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
-    st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
 }
 
 static void
@@ -321,7 +312,8 @@ freeobj_i(VALUE tpval, void *data)
     }
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
-	move_to_freed_list(arg, obj, info);
+	move_to_freed_list(arg, info);
+	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
     }
 }
 
@@ -422,10 +414,12 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 	rb_ary_push(k, type_symbols[key_buff->data[i++]]);
     }
     if (arg->keys & KEY_CLASS) {
-	const char *klass_path = (const char *)key_buff->data[i++];
-	if (klass_path) {
-	    
-	    delete_unique_str(arg->str_table, klass_path);
+	VALUE klass = key_buff->data[i++];
+	if (BUILTIN_TYPE(klass) == T_CLASS) {
+	    klass = rb_class_real(klass);
+	    rb_ary_push(k, klass);
+	    /* TODO: actually, it is dangerous code because klass can be sweeped */
+	    /*       So that class specifier is hidden feature                   */
 	}
 	else {
 	    rb_ary_push(k, Qnil);
@@ -442,7 +436,7 @@ aggregate_rest_object_i(st_data_t key, st_data_t val, void *data)
 {
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
     struct allocation_info *info = (struct allocation_info *)val;
-    move_to_freed_list(arg, (VALUE)key, info);
+    move_to_freed_list(arg, info);
     return ST_CONTINUE;
 }
 
@@ -454,6 +448,7 @@ aggregate_result(struct traceobj_arg *arg)
     aar.arg = arg;
 
     st_foreach(arg->object_table, aggregate_rest_object_i, (st_data_t)arg);
+    st_clear(arg->object_table);
     aggregator_i(arg);
     st_foreach(arg->aggregate_table, aggregate_result_i, (st_data_t)&aar);
     clear_traceobj_arg();
@@ -520,6 +515,8 @@ allocation_tracer_setup(int argc, VALUE *argv, VALUE self)
     else {
 	int i;
 	VALUE ary = rb_check_array_type(argv[0]);
+
+	arg->keys = 0;
 
 	for (i=0; i<(int)RARRAY_LEN(ary); i++) {
 	         if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("path"))) arg->keys |= KEY_PATH;
