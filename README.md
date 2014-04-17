@@ -8,6 +8,8 @@ focused on `age' of objects.
 
 This gem was separated from gc_tracer.gem.
 
+[![Build Status](https://travis-ci.org/ko1/allocation_tracer.svg?branch=master)](https://travis-ci.org/ko1/allocation_tracer)
+
 ## Installation
 
 Add this line to your application's Gemfile:
