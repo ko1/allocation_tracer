@@ -302,7 +302,6 @@ aggregator_i(void *data)
 static void
 move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
 {
-    info->memsize = rb_obj_memsize_of(obj);
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
 }
@@ -320,6 +319,7 @@ freeobj_i(VALUE tpval, void *data)
     }
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
+	info->memsize = rb_obj_memsize_of(obj);
 	move_to_freed_list(arg, obj, info);
 	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
     }
