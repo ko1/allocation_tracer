@@ -219,6 +219,7 @@ newobj_i(VALUE tpval, void *data)
 
     info->next = NULL;
     info->living = 1;
+    info->memsize = 0;
     info->flags = RBASIC(obj)->flags;
     info->klass = RTEST(klass) ? rb_class_real(klass) : Qnil;
     info->generation = rb_gc_count();
@@ -300,7 +301,7 @@ aggregator_i(void *data)
 }
 
 static void
-move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
+move_to_freed_list(struct traceobj_arg *arg, struct allocation_info *info)
 {
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
@@ -320,7 +321,7 @@ freeobj_i(VALUE tpval, void *data)
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
 	info->memsize = rb_obj_memsize_of(obj);
-	move_to_freed_list(arg, obj, info);
+	move_to_freed_list(arg, info);
 	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
     }
 }
@@ -444,7 +445,7 @@ aggregate_rest_object_i(st_data_t key, st_data_t val, void *data)
 {
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
     struct allocation_info *info = (struct allocation_info *)val;
-    move_to_freed_list(arg, (VALUE)key, info);
+    move_to_freed_list(arg, info);
     return ST_CONTINUE;
 }
 

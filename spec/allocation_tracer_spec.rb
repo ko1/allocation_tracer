@@ -27,7 +27,8 @@ describe ObjectSpace::AllocationTracer do
     it 'should acquire allocated memsize' do
       line = __LINE__ + 2
       result = ObjectSpace::AllocationTracer.trace do
-        a = 'x' * 1234
+        'x' * 1234 # danger
+        GC.start
       end
 
       expect(result.length).to be >= 1
