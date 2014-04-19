@@ -13,6 +13,8 @@ size_t rb_obj_memsize_of(VALUE obj); /* in gc.c */
 static VALUE rb_mAllocationTracer;
 
 struct allocation_info {
+    struct allocation_info *next;
+
     /* all of information don't need marking. */
     int living;
     VALUE flags;
@@ -20,23 +22,26 @@ struct allocation_info {
     size_t generation;
     size_t memsize;
 
-    /* allocation info */
+    /* allocator info */
     const char *path;
     unsigned long line;
-
-    struct allocation_info *next;
 };
+
+#define MAX_KEY_DATA 4
 
 #define KEY_PATH    (1<<1)
 #define KEY_LINE    (1<<2)
 #define KEY_TYPE    (1<<3)
 #define KEY_CLASS   (1<<4)
 
+#define MAX_VAL_DATA 6
+
 #define VAL_COUNT     (1<<1)
-#define VAL_TOTAL_AGE (1<<2)
-#define VAL_MIN_AGE   (1<<3)
-#define VAL_MAX_AGE   (1<<4)
-#define VAL_MEMSIZE   (1<<5)
+#define VAL_OLDCOUNT  (1<<2)
+#define VAL_TOTAL_AGE (1<<3)
+#define VAL_MIN_AGE   (1<<4)
+#define VAL_MAX_AGE   (1<<5)
+#define VAL_MEMSIZE   (1<<6)
 
 struct traceobj_arg {
     int running;
@@ -101,12 +106,9 @@ delete_unique_str(st_table *tbl, const char *str)
     }
 }
 
-/* file, line, type */
-#define MAX_KEY_DATA 4
-
 struct memcmp_key_data {
     int n;
-    st_data_t data[4];
+    st_data_t data[MAX_KEY_DATA];
 };
 
 static int
@@ -218,9 +220,9 @@ newobj_i(VALUE tpval, void *data)
     }
 
     info->next = NULL;
+    info->flags = RBASIC(obj)->flags;
     info->living = 1;
     info->memsize = 0;
-    info->flags = RBASIC(obj)->flags;
     info->klass = RTEST(klass) ? rb_class_real(klass) : Qnil;
     info->generation = rb_gc_count();
 
@@ -276,10 +278,10 @@ aggregator_i(void *data)
 	    key = (st_data_t)key_buff;
 
 	    /* count, total age, max age, min age */
-	    val_buff = ALLOC_N(size_t, 5);
-	    val_buff[0] = val_buff[1] = 0;
-	    val_buff[2] = val_buff[3] = age;
-	    val_buff[4] = 0;
+	    val_buff = ALLOC_N(size_t, 6);
+	    val_buff[0] = val_buff[1] = val_buff[2] = 0;
+	    val_buff[3] = val_buff[4] = age;
+	    val_buff[5] = 0;
 
 	    if (arg->keys & KEY_PATH) keep_unique_str(arg->str_table, info->path);
 
@@ -290,10 +292,11 @@ aggregator_i(void *data)
 	}
 
 	val_buff[0] += 1;
-	val_buff[1] += age;
-	if (val_buff[2] > age) val_buff[2] = age; /* min */
-	if (val_buff[3] < age) val_buff[3] = age; /* max */
-	val_buff[4] += info->memsize;
+	if (info->flags & FL_PROMOTED) val_buff[1] += 1;
+	val_buff[2] += age;
+	if (val_buff[3] > age) val_buff[3] = age; /* min */
+	if (val_buff[4] < age) val_buff[4] = age; /* max */
+	val_buff[5] += info->memsize;
 
 	free_allocation_info(arg, info);
 	info = next_info;
@@ -320,6 +323,7 @@ freeobj_i(VALUE tpval, void *data)
     }
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
+	info->flags = RBASIC(obj)->flags;
 	info->memsize = rb_obj_memsize_of(obj);
 	move_to_freed_list(arg, info);
 	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
@@ -393,7 +397,10 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 
     size_t *val_buff = (size_t *)val;
     struct memcmp_key_data *key_buff = (struct memcmp_key_data *)key;
-    VALUE v = rb_ary_new3(5, INT2FIX(val_buff[0]), INT2FIX(val_buff[1]), INT2FIX(val_buff[2]), INT2FIX(val_buff[3]), INT2FIX(val_buff[4]));
+    VALUE v = rb_ary_new3(6,
+			  INT2FIX(val_buff[0]), INT2FIX(val_buff[1]),
+			  INT2FIX(val_buff[2]), INT2FIX(val_buff[3]),
+			  INT2FIX(val_buff[4]), INT2FIX(val_buff[5]));
     VALUE k = rb_ary_new();
     int i = 0;
     static VALUE type_symbols[T_MASK] = {0};
@@ -445,7 +452,14 @@ aggregate_rest_object_i(st_data_t key, st_data_t val, void *data)
 {
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
     struct allocation_info *info = (struct allocation_info *)val;
+    VALUE obj = (VALUE)key;
+
+    if ((info->flags & T_MASK) == (RBASIC(obj)->flags & T_MASK)) {
+	info->flags = RBASIC(obj)->flags;
+    }
+    /* danger operation because obj can be collected. */
     move_to_freed_list(arg, info);
+
     return ST_CONTINUE;
 }
 
@@ -553,11 +567,11 @@ allocation_tracer_header(VALUE self)
     if (arg->keys & KEY_CLASS) rb_ary_push(ary, ID2SYM(rb_intern("class")));
 
     if (arg->vals & VAL_COUNT) rb_ary_push(ary, ID2SYM(rb_intern("count")));
+    if (arg->vals & VAL_OLDCOUNT) rb_ary_push(ary, ID2SYM(rb_intern("old_count")));
     if (arg->vals & VAL_TOTAL_AGE) rb_ary_push(ary, ID2SYM(rb_intern("total_age")));
     if (arg->vals & VAL_MIN_AGE) rb_ary_push(ary, ID2SYM(rb_intern("min_age")));
     if (arg->vals & VAL_MAX_AGE) rb_ary_push(ary, ID2SYM(rb_intern("max_age")));
-    if (arg->vals & VAL_MEMSIZE) rb_ary_push(ary, ID2SYM(rb_intern("memsize")));
-
+    if (arg->vals & VAL_MEMSIZE) rb_ary_push(ary, ID2SYM(rb_intern("total_memsize")));
     return ary;
 }
 
