@@ -139,7 +139,7 @@ get_traceobj_arg(void)
 	tmp_trace_arg = ALLOC_N(struct traceobj_arg, 1);
 	tmp_trace_arg->running = 0;
 	tmp_trace_arg->keys = 0;
-	tmp_trace_arg->vals = VAL_COUNT | VAL_TOTAL_AGE | VAL_MAX_AGE | VAL_MIN_AGE | VAL_MEMSIZE;
+	tmp_trace_arg->vals = VAL_COUNT | VAL_OLDCOUNT | VAL_TOTAL_AGE | VAL_MAX_AGE | VAL_MIN_AGE | VAL_MEMSIZE;
 	tmp_trace_arg->aggregate_table = st_init_table(&memcmp_hash_type);
 	tmp_trace_arg->object_table = st_init_numtable();
 	tmp_trace_arg->str_table = st_init_strtable();
@@ -536,22 +536,27 @@ allocation_tracer_setup(int argc, VALUE *argv, VALUE self)
 	rb_raise(rb_eRuntimeError, "can't change configuration during running");
     }
     else {
-	int i;
-	VALUE ary = rb_check_array_type(argv[0]);
+	if (argc >= 1) {
+	    int i;
+	    VALUE ary = rb_check_array_type(argv[0]);
 
-	arg->keys = 0;
+	    arg->keys = 0;
 
-	for (i=0; i<(int)RARRAY_LEN(ary); i++) {
-	         if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("path"))) arg->keys |= KEY_PATH;
-	    else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("line"))) arg->keys |= KEY_LINE;
-	    else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("type"))) arg->keys |= KEY_TYPE;
-	    else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("class"))) arg->keys |= KEY_CLASS;
-	    else {
-		rb_raise(rb_eArgError, "not supported key type");
+	    for (i=0; i<(int)RARRAY_LEN(ary); i++) {
+		if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("path"))) arg->keys |= KEY_PATH;
+		else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("line"))) arg->keys |= KEY_LINE;
+		else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("type"))) arg->keys |= KEY_TYPE;
+		else if (RARRAY_AREF(ary, i) == ID2SYM(rb_intern("class"))) arg->keys |= KEY_CLASS;
+		else {
+		    rb_raise(rb_eArgError, "not supported key type");
+		}
 	    }
 	}
     }
 
+    if (argc == 0) {
+	arg->keys = KEY_PATH | KEY_LINE;
+    }
     return Qnil;
 }
 

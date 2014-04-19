@@ -82,6 +82,20 @@ describe ObjectSpace::AllocationTracer do
         expect(result[[__FILE__, line + 1, Object]]).to eq [1, 0, 0, 0, 0, 0]
         expect(result[[__FILE__, line + 1, String]]).to eq [1, 0, 0, 0, 0, 0]
       end
+
+      it 'should have correct headers' do
+        ObjectSpace::AllocationTracer.setup(%i(path line))
+        expect(ObjectSpace::AllocationTracer.header).to eq [:path, :line, :count, :old_count, :total_age, :min_age, :max_age, :total_memsize]
+        ObjectSpace::AllocationTracer.setup(%i(path line class))
+        expect(ObjectSpace::AllocationTracer.header).to eq [:path, :line, :class, :count, :old_count, :total_age, :min_age, :max_age, :total_memsize]
+        ObjectSpace::AllocationTracer.setup(%i(path line type class))
+        expect(ObjectSpace::AllocationTracer.header).to eq [:path, :line, :type, :class, :count, :old_count, :total_age, :min_age, :max_age, :total_memsize]
+      end
+
+      it 'should set default setup' do
+        ObjectSpace::AllocationTracer.setup()
+        expect(ObjectSpace::AllocationTracer.header).to eq [:path, :line, :count, :old_count, :total_age, :min_age, :max_age, :total_memsize]
+      end
     end
   end
 end
