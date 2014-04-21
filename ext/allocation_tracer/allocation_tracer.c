@@ -7,6 +7,7 @@
 
 #include "ruby/ruby.h"
 #include "ruby/debug.h"
+#include <assert.h>
 
 size_t rb_obj_memsize_of(VALUE obj); /* in gc.c */
 
@@ -223,7 +224,7 @@ newobj_i(VALUE tpval, void *data)
     info->flags = RBASIC(obj)->flags;
     info->living = 1;
     info->memsize = 0;
-    info->klass = RTEST(klass) ? rb_class_real(klass) : Qnil;
+    info->klass = (RTEST(klass) && !RB_TYPE_P(obj, T_NODE)) ? rb_class_real(klass) : Qnil;
     info->generation = rb_gc_count();
 
     info->path = path_cstr;
@@ -235,8 +236,63 @@ newobj_i(VALUE tpval, void *data)
 /* file, line, type, klass */
 #define MAX_KEY_SIZE 4
 
-void
-aggregator_i(void *data)
+static void
+aggregate_each_info(struct traceobj_arg *arg, struct allocation_info *info, size_t gc_count)
+{
+    st_data_t key, val;
+    struct memcmp_key_data key_data;
+    size_t *val_buff;
+    size_t age = (int)(gc_count - info->generation);
+    int i = 0;
+
+    if (arg->keys & KEY_PATH) {
+	key_data.data[i++] = (st_data_t)info->path;
+    }
+    if (arg->keys & KEY_LINE) {
+	key_data.data[i++] = (st_data_t)info->line;
+    }
+    if (arg->keys & KEY_TYPE) {
+	key_data.data[i++] = (st_data_t)(info->flags & T_MASK);
+    }
+    if (arg->keys & KEY_CLASS) {
+	key_data.data[i++] = info->klass;
+    }
+    key_data.n = i;
+    key = (st_data_t)&key_data;
+
+    if (st_lookup(arg->aggregate_table, key, &val) == 0) {
+	struct memcmp_key_data *key_buff = ruby_xmalloc(sizeof(int) + sizeof(st_data_t) * key_data.n);
+	key_buff->n = key_data.n;
+
+	for (i=0; i<key_data.n; i++) {
+	    key_buff->data[i] = key_data.data[i];
+	}
+	key = (st_data_t)key_buff;
+
+	/* count, total age, max age, min age */
+	val_buff = ALLOC_N(size_t, 6);
+	val_buff[0] = val_buff[1] = val_buff[2] = 0;
+	val_buff[3] = val_buff[4] = age;
+	val_buff[5] = 0;
+
+	if (arg->keys & KEY_PATH) keep_unique_str(arg->str_table, info->path);
+
+	st_insert(arg->aggregate_table, (st_data_t)key_buff, (st_data_t)val_buff);
+    }
+    else {
+	val_buff = (size_t *)val;
+    }
+
+    val_buff[0] += 1;
+    if (info->flags & FL_PROMOTED) val_buff[1] += 1;
+    val_buff[2] += age;
+    if (val_buff[3] > age) val_buff[3] = age; /* min */
+    if (val_buff[4] < age) val_buff[4] = age; /* max */
+    val_buff[5] += info->memsize;
+}
+
+static void
+aggregate_freed_info(void *data)
 {
     size_t gc_count = rb_gc_count();
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
@@ -246,58 +302,7 @@ aggregator_i(void *data)
 
     while (info) {
 	struct allocation_info *next_info = info->next;
-	st_data_t key, val;
-	struct memcmp_key_data key_data;
-	size_t *val_buff;
-	size_t age = (int)(gc_count - info->generation);
-	int i;
-
-	i = 0;
-	if (arg->keys & KEY_PATH) {
-	    key_data.data[i++] = (st_data_t)info->path;
-	}
-	if (arg->keys & KEY_LINE) {
-	    key_data.data[i++] = (st_data_t)info->line;
-	}
-	if (arg->keys & KEY_TYPE) {
-	    key_data.data[i++] = (st_data_t)(info->flags & T_MASK);
-	}
-	if (arg->keys & KEY_CLASS) {
-	    key_data.data[i++] = info->klass;
-	}
-	key_data.n = i;
-	key = (st_data_t)&key_data;
-
-	if (st_lookup(arg->aggregate_table, key, &val) == 0) {
-	    struct memcmp_key_data *key_buff = ruby_xmalloc(sizeof(int) + sizeof(st_data_t) * key_data.n);
-	    key_buff->n = key_data.n;
-
-	    for (i=0; i<key_data.n; i++) {
-		key_buff->data[i] = key_data.data[i];
-	    }
-	    key = (st_data_t)key_buff;
-
-	    /* count, total age, max age, min age */
-	    val_buff = ALLOC_N(size_t, 6);
-	    val_buff[0] = val_buff[1] = val_buff[2] = 0;
-	    val_buff[3] = val_buff[4] = age;
-	    val_buff[5] = 0;
-
-	    if (arg->keys & KEY_PATH) keep_unique_str(arg->str_table, info->path);
-
-	    st_insert(arg->aggregate_table, (st_data_t)key_buff, (st_data_t)val_buff);
-	}
-	else {
-	    val_buff = (size_t *)val;
-	}
-
-	val_buff[0] += 1;
-	if (info->flags & FL_PROMOTED) val_buff[1] += 1;
-	val_buff[2] += age;
-	if (val_buff[3] > age) val_buff[3] = age; /* min */
-	if (val_buff[4] < age) val_buff[4] = age; /* max */
-	val_buff[5] += info->memsize;
-
+	aggregate_each_info(arg, info, gc_count);
 	free_allocation_info(arg, info);
 	info = next_info;
     }
@@ -318,15 +323,54 @@ freeobj_i(VALUE tpval, void *data)
     VALUE obj = rb_tracearg_object(tparg);
     struct allocation_info *info;
 
-    if (arg->freed_allocation_info == NULL) {
-	rb_postponed_job_register_one(0, aggregator_i, arg);
-    }
-
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
 	info->flags = RBASIC(obj)->flags;
 	info->memsize = rb_obj_memsize_of(obj);
 	move_to_freed_list(arg, info);
 	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
+	if (arg->freed_allocation_info == NULL) {
+	    rb_postponed_job_register_one(0, aggregate_freed_info, arg);
+	}
+    }
+}
+
+static void
+enable_newobj_hook(void)
+{
+    VALUE newobj_hook;
+
+    if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
+	rb_raise(rb_eRuntimeError, "not started.");
+    }
+    if (rb_tracepoint_enabled_p(newobj_hook)) {
+	rb_raise(rb_eRuntimeError, "newobj hooks is already enabled.");
+    }
+
+    rb_tracepoint_enable(newobj_hook);
+}
+
+static void
+disable_newobj_hook(void)
+{
+    VALUE newobj_hook;
+
+    if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
+	rb_raise(rb_eRuntimeError, "not started.");
+    }
+    if (rb_tracepoint_enabled_p(newobj_hook) == Qfalse) {
+	rb_raise(rb_eRuntimeError, "newobj hooks is already disabled.");
+    }
+
+    rb_tracepoint_disable(newobj_hook);
+}
+
+static void
+check_tracer_running(void)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+
+    if (!arg->running) {
+	rb_raise(rb_eRuntimeError, "not started yet");
     }
 }
 
@@ -346,6 +390,26 @@ start_alloc_hooks(VALUE mod)
 
     rb_tracepoint_enable(newobj_hook);
     rb_tracepoint_enable(freeobj_hook);
+}
+
+static VALUE
+stop_alloc_hooks(VALUE self)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+    check_tracer_running();
+
+    {
+	VALUE newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"));
+	VALUE freeobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("freeobj_hook"));
+	rb_tracepoint_disable(newobj_hook);
+	rb_tracepoint_disable(freeobj_hook);
+
+	clear_traceobj_arg();
+
+	arg->running = 0;
+    }
+
+    return Qnil;
 }
 
 static const char *
@@ -427,7 +491,9 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 	rb_ary_push(k, INT2FIX((int)key_buff->data[i++]));
     }
     if (arg->keys & KEY_TYPE) {
-	rb_ary_push(k, type_symbols[key_buff->data[i++]]);
+	int sym_index = key_buff->data[i++];
+	assert(T_MASK > sym_index);
+	rb_ary_push(k, type_symbols[sym_index]);
     }
     if (arg->keys & KEY_CLASS) {
 	VALUE klass = key_buff->data[i++];
@@ -448,17 +514,20 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 }
 
 static int
-aggregate_rest_object_i(st_data_t key, st_data_t val, void *data)
+aggregate_live_object_i(st_data_t key, st_data_t val, void *data)
 {
-    struct traceobj_arg *arg = (struct traceobj_arg *)data;
-    struct allocation_info *info = (struct allocation_info *)val;
     VALUE obj = (VALUE)key;
+    struct allocation_info *info = (struct allocation_info *)val;
+    size_t gc_count = rb_gc_count();
+    struct traceobj_arg *arg = (struct traceobj_arg *)data;
 
-    if ((info->flags & T_MASK) == (RBASIC(obj)->flags & T_MASK)) {
+    if (BUILTIN_TYPE(obj) == (info->flags & T_MASK)) {
+	VALUE klass = RBASIC_CLASS(obj);
 	info->flags = RBASIC(obj)->flags;
+	info->klass = (RTEST(klass) && !RB_TYPE_P(obj, T_NODE)) ? rb_class_real(klass) : Qnil;
     }
-    /* danger operation because obj can be collected. */
-    move_to_freed_list(arg, info);
+
+    aggregate_each_info(arg, info, gc_count);
 
     return ST_CONTINUE;
 }
@@ -470,39 +539,64 @@ aggregate_result(struct traceobj_arg *arg)
     aar.result = rb_hash_new();
     aar.arg = arg;
 
-    st_foreach(arg->object_table, aggregate_rest_object_i, (st_data_t)arg);
-    st_clear(arg->object_table);
-    aggregator_i(arg);
+    /* aggregated table -> Ruby hash */
+    aggregate_freed_info(arg);
     st_foreach(arg->aggregate_table, aggregate_result_i, (st_data_t)&aar);
-    clear_traceobj_arg();
+
+    /* collect live aggregate table */
+    {
+	st_table *dead_object_aggregate_table = arg->aggregate_table;
+
+	/* make live object aggregate table */
+	arg->aggregate_table = st_init_table(&memcmp_hash_type);
+	st_foreach(arg->object_table, aggregate_live_object_i, (st_data_t)arg);
+
+	/* aggregate table -> Ruby hash */
+	st_foreach(arg->aggregate_table, aggregate_result_i, (st_data_t)&aar);
+
+	/* remove live object aggregate table */
+	st_foreach(arg->aggregate_table, free_key_values_i, 0);
+	st_free_table(arg->aggregate_table);
+
+	arg->aggregate_table = dead_object_aggregate_table;
+    }
     return aar.result;
-}
-
-static VALUE
-stop_allocation_tracing(VALUE self)
-{
-    struct traceobj_arg * arg = get_traceobj_arg();
-
-    if (arg->running) {
-	VALUE newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"));
-	VALUE freeobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("freeobj_hook"));
-	rb_tracepoint_disable(newobj_hook);
-	rb_tracepoint_disable(freeobj_hook);
-
-	arg->running = 0;
-    }
-    else {
-	rb_raise(rb_eRuntimeError, "not started yet.");
-    }
-
-    return Qnil;
 }
 
 static VALUE
 allocation_tracer_stop(VALUE self)
 {
-    stop_allocation_tracing(self);
-    return aggregate_result(get_traceobj_arg());
+    VALUE result = aggregate_result(get_traceobj_arg());
+    stop_alloc_hooks(self);
+    return result;
+}
+
+static VALUE
+allocation_tracer_result(VALUE self)
+{
+    VALUE result;
+    struct traceobj_arg *arg = get_traceobj_arg();
+
+    check_tracer_running();
+
+    disable_newobj_hook();
+    result = aggregate_result(arg);
+    enable_newobj_hook();
+    return result;
+}
+
+static VALUE
+allocation_tracer_clear(VALUE self)
+{
+    clear_traceobj_arg();
+    return Qnil;
+}
+
+static VALUE
+allocation_tracer_trace_i(VALUE self)
+{
+    rb_yield(Qnil);
+    return allocation_tracer_result(self);
 }
 
 static VALUE
@@ -519,11 +613,26 @@ allocation_tracer_trace(VALUE self)
 	start_alloc_hooks(rb_mAllocationTracer);
 
 	if (rb_block_given_p()) {
-	    rb_ensure(rb_yield, Qnil, stop_allocation_tracing, Qnil);
-	    return aggregate_result(get_traceobj_arg());
+	    return rb_ensure(allocation_tracer_trace_i, self, stop_alloc_hooks, Qnil);
 	}
     }
 
+    return Qnil;
+}
+
+static VALUE
+allocation_tracer_pause(VALUE self)
+{
+    check_tracer_running();
+    disable_newobj_hook();
+    return Qnil;
+}
+
+static VALUE
+allocation_tracer_resume(VALUE self)
+{
+    check_tracer_running();
+    enable_newobj_hook();
     return Qnil;
 }
 
@@ -588,7 +697,13 @@ Init_allocation_tracer(void)
 
     /* allocation tracer methods */
     rb_define_module_function(mod, "trace", allocation_tracer_trace, 0);
+    rb_define_module_function(mod, "start", allocation_tracer_trace, 0);
     rb_define_module_function(mod, "stop", allocation_tracer_stop, 0);
+    rb_define_module_function(mod, "pause", allocation_tracer_pause, 0);
+    rb_define_module_function(mod, "resume", allocation_tracer_resume, 0);
+
+    rb_define_module_function(mod, "result", allocation_tracer_result, 0);
+    rb_define_module_function(mod, "clear", allocation_tracer_clear, 0);
     rb_define_module_function(mod, "setup", allocation_tracer_setup, -1);
     rb_define_module_function(mod, "header", allocation_tracer_header, 0);
 }

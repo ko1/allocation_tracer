@@ -50,6 +50,72 @@ describe ObjectSpace::AllocationTracer do
       expect(size).to be > 1234 if size > 0
     end
 
+    it 'can be paused and resumed' do
+      line = __LINE__ + 2
+      result = ObjectSpace::AllocationTracer.trace do
+        Object.new
+        ObjectSpace::AllocationTracer.pause
+        Object.new # ignore tracing
+        ObjectSpace::AllocationTracer.resume
+        Object.new
+      end
+
+      expect(result.length).to be 2
+      expect(result[[__FILE__, line    ]]).to eq [1, 0, 0, 0, 0, 0]
+      expect(result[[__FILE__, line + 4]]).to eq [1, 0, 0, 0, 0, 0]
+    end
+
+    it 'can be get middle result' do
+      middle_result = nil
+      line = __LINE__ + 2
+      result = ObjectSpace::AllocationTracer.trace do
+        Object.new
+        middle_result = ObjectSpace::AllocationTracer.result
+        Object.new
+      end
+
+      expect(result.length).to be 2
+      expect(result[[__FILE__, line    ]]).to eq [1, 0, 0, 0, 0, 0]
+      expect(result[[__FILE__, line + 2]]).to eq [1, 0, 0, 0, 0, 0]
+
+      expect(middle_result.length).to be 1
+      expect(middle_result[[__FILE__, line    ]]).to eq [1, 0, 0, 0, 0, 0]
+    end
+
+    describe 'stop when not started yet' do
+      it 'should raise RuntimeError' do
+        expect do
+          ObjectSpace::AllocationTracer.stop
+        end.to raise_error(RuntimeError)
+      end
+    end
+
+    describe 'pause when not started yet' do
+      it 'should raise RuntimeError' do
+        expect do
+          ObjectSpace::AllocationTracer.pause
+        end.to raise_error(RuntimeError)
+      end
+    end
+
+    describe 'resume when not started yet' do
+      it 'should raise RuntimeError' do
+        expect do
+          ObjectSpace::AllocationTracer.resume
+        end.to raise_error(RuntimeError)
+      end
+    end
+
+    describe 'when starting recursively' do
+      it 'should raise RuntimeError' do
+        expect do
+          ObjectSpace::AllocationTracer.trace{
+            ObjectSpace::AllocationTracer.trace{}
+          }
+        end.to raise_error(RuntimeError)
+      end
+    end
+
     describe 'with different setup' do
       it 'should work with type' do
         line = __LINE__ + 3
