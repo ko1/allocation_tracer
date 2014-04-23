@@ -151,6 +151,40 @@ test.rb 7       50000   41650   0       5
 
 (tab separated colums)
 
+### Lifetime table
+
+You can collect lifetime statistics with 
+ObjectSpace::AllocationTracer.lifetime_table method.
+
+```ruby
+require 'pp'
+require 'allocation_tracer'
+
+ObjectSpace::AllocationTracer.lifetime_table_setup true
+result = ObjectSpace::AllocationTracer.trace do
+  100000.times{
+    Object.new
+    ''
+  }
+end
+pp ObjectSpace::AllocationTracer.lifetime_table
+```
+
+will show
+
+```
+{:T_OBJECT=>[3434, 96563, 0, 0, 1, 0, 0, 2],
+ :T_STRING=>[3435, 96556, 2, 1, 1, 1, 1, 1, 2]}
+```
+
+This output means that the age of 3434 T_OBJECT objects are 0, 96563 
+objects are 1 and 2 objects are 7. Also the age of 3435 T_STRING 
+objects are 0, 96556 are 1 and so on.
+
+Note that these number includes living objects and dead objects.  For 
+dead object, age means lifetime. For living objects, age means current 
+age.
+
 ## Contributing
 
 1. Fork it ( http://github.com/<my-github-username>/allocation_tracer/fork )

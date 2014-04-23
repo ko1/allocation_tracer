@@ -13,6 +13,19 @@ size_t rb_obj_memsize_of(VALUE obj); /* in gc.c */
 
 static VALUE rb_mAllocationTracer;
 
+struct traceobj_arg {
+    int running;
+    int keys, vals;
+    st_table *object_table;     /* obj (VALUE)      -> allocation_info */
+    st_table *str_table;        /* cstr             -> refcount */
+
+    st_table *aggregate_table;  /* user defined key -> [count, total_age, max_age, min_age] */
+    struct allocation_info *freed_allocation_info;
+
+    /* */
+    size_t **lifetime_table;
+};
+
 struct allocation_info {
     struct allocation_info *next;
 
@@ -43,15 +56,6 @@ struct allocation_info {
 #define VAL_MIN_AGE   (1<<4)
 #define VAL_MAX_AGE   (1<<5)
 #define VAL_MEMSIZE   (1<<6)
-
-struct traceobj_arg {
-    int running;
-    int keys, vals;
-    st_table *aggregate_table;  /* user defined key -> [count, total_age, max_age, min_age] */
-    st_table *object_table;     /* obj (VALUE)      -> allocation_info */
-    st_table *str_table;        /* cstr             -> refcount */
-    struct allocation_info *freed_allocation_info;
-};
 
 static char *
 keep_unique_str(st_table *tbl, const char *str)
@@ -145,6 +149,7 @@ get_traceobj_arg(void)
 	tmp_trace_arg->object_table = st_init_numtable();
 	tmp_trace_arg->str_table = st_init_strtable();
 	tmp_trace_arg->freed_allocation_info = NULL;
+	tmp_trace_arg->lifetime_table = NULL;
     }
     return tmp_trace_arg;
 }
@@ -182,6 +187,17 @@ clear_traceobj_arg(void)
     st_clear(arg->object_table);
     st_foreach(arg->str_table, free_keys_i, 0);
     st_clear(arg->str_table);
+
+    if (arg->lifetime_table) {
+	int i;
+
+	for (i=0; i<T_MASK; i++) {
+	    if (arg->lifetime_table[i] != NULL) {
+		free(arg->lifetime_table[i]);
+		arg->lifetime_table[i] = NULL;
+	    }
+	}
+    }
 }
 
 static struct allocation_info *
@@ -261,7 +277,7 @@ aggregate_each_info(struct traceobj_arg *arg, struct allocation_info *info, size
     key = (st_data_t)&key_data;
 
     if (st_lookup(arg->aggregate_table, key, &val) == 0) {
-	struct memcmp_key_data *key_buff = ruby_xmalloc(sizeof(int) + sizeof(st_data_t) * key_data.n);
+	struct memcmp_key_data *key_buff = ruby_xmalloc(sizeof(struct memcmp_key_data));
 	key_buff->n = key_data.n;
 
 	for (i=0; i<key_data.n; i++) {
@@ -316,6 +332,34 @@ move_to_freed_list(struct traceobj_arg *arg, struct allocation_info *info)
 }
 
 static void
+add_lifetime_table(size_t **lines, int type, struct allocation_info *info)
+{
+    size_t age = rb_gc_count() - info->generation;
+    size_t *line = lines[type];
+    size_t len, i;
+
+    if (line == NULL) {
+	len = age + 1;
+	line = lines[type] = malloc(sizeof(size_t) * (1 + len));
+	line[0] = len;
+	for (i=0; i<len; i++) line[i+1] = 0;
+    }
+    else {
+	len = line[0];
+
+	if (len < age + 1) {
+	    size_t old_len = len;
+	    len = age + 1;
+	    line = lines[type] = realloc(line, sizeof(size_t) * (1 + len));
+	    for (i=old_len; i<len; i++) line[i+1] = 0;
+	    line[0] = len;
+	}
+    }
+
+    line[age + 1]++;
+}
+
+static void
 freeobj_i(VALUE tpval, void *data)
 {
     struct traceobj_arg *arg = (struct traceobj_arg *)data;
@@ -331,6 +375,20 @@ freeobj_i(VALUE tpval, void *data)
 	if (arg->freed_allocation_info == NULL) {
 	    rb_postponed_job_register_one(0, aggregate_freed_info, arg);
 	}
+
+	if (arg->lifetime_table) {
+	    add_lifetime_table(arg->lifetime_table, BUILTIN_TYPE(obj), info);
+	}
+    }
+}
+
+static void
+check_tracer_running(void)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+
+    if (!arg->running) {
+	rb_raise(rb_eRuntimeError, "not started yet");
     }
 }
 
@@ -338,6 +396,8 @@ static void
 enable_newobj_hook(void)
 {
     VALUE newobj_hook;
+
+    check_tracer_running();
 
     if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
 	rb_raise(rb_eRuntimeError, "not started.");
@@ -354,6 +414,8 @@ disable_newobj_hook(void)
 {
     VALUE newobj_hook;
 
+    check_tracer_running();
+
     if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
 	rb_raise(rb_eRuntimeError, "not started.");
     }
@@ -362,16 +424,6 @@ disable_newobj_hook(void)
     }
 
     rb_tracepoint_disable(newobj_hook);
-}
-
-static void
-check_tracer_running(void)
-{
-    struct traceobj_arg * arg = get_traceobj_arg();
-
-    if (!arg->running) {
-	rb_raise(rb_eRuntimeError, "not started yet");
-    }
 }
 
 static void
@@ -412,39 +464,49 @@ stop_alloc_hooks(VALUE self)
     return Qnil;
 }
 
-static const char *
-type_name(int type)
+static VALUE
+type_sym(int type)
 {
-    switch (type) {
-#define TYPE_NAME(t) case (t): return #t;
-	TYPE_NAME(T_NONE);
-	TYPE_NAME(T_OBJECT);
-	TYPE_NAME(T_CLASS);
-	TYPE_NAME(T_MODULE);
-	TYPE_NAME(T_FLOAT);
-	TYPE_NAME(T_STRING);
-	TYPE_NAME(T_REGEXP);
-	TYPE_NAME(T_ARRAY);
-	TYPE_NAME(T_HASH);
-	TYPE_NAME(T_STRUCT);
-	TYPE_NAME(T_BIGNUM);
-	TYPE_NAME(T_FILE);
-	TYPE_NAME(T_MATCH);
-	TYPE_NAME(T_COMPLEX);
-	TYPE_NAME(T_RATIONAL);
-	TYPE_NAME(T_NIL);
-	TYPE_NAME(T_TRUE);
-	TYPE_NAME(T_FALSE);
-	TYPE_NAME(T_SYMBOL);
-	TYPE_NAME(T_FIXNUM);
-	TYPE_NAME(T_UNDEF);
-	TYPE_NAME(T_NODE);
-	TYPE_NAME(T_ICLASS);
-	TYPE_NAME(T_ZOMBIE);
-	TYPE_NAME(T_DATA);
+    static VALUE syms[T_MASK];
+
+    if (syms[0] == 0) {
+	int i;
+	for (i=0; i<T_MASK; i++) {
+	    switch (i) {
+#define TYPE_NAME(t) case (t): syms[i] = ID2SYM(rb_intern(#t)); break;
+		TYPE_NAME(T_NONE);
+		TYPE_NAME(T_OBJECT);
+		TYPE_NAME(T_CLASS);
+		TYPE_NAME(T_MODULE);
+		TYPE_NAME(T_FLOAT);
+		TYPE_NAME(T_STRING);
+		TYPE_NAME(T_REGEXP);
+		TYPE_NAME(T_ARRAY);
+		TYPE_NAME(T_HASH);
+		TYPE_NAME(T_STRUCT);
+		TYPE_NAME(T_BIGNUM);
+		TYPE_NAME(T_FILE);
+		TYPE_NAME(T_MATCH);
+		TYPE_NAME(T_COMPLEX);
+		TYPE_NAME(T_RATIONAL);
+		TYPE_NAME(T_NIL);
+		TYPE_NAME(T_TRUE);
+		TYPE_NAME(T_FALSE);
+		TYPE_NAME(T_SYMBOL);
+		TYPE_NAME(T_FIXNUM);
+		TYPE_NAME(T_UNDEF);
+		TYPE_NAME(T_NODE);
+		TYPE_NAME(T_ICLASS);
+		TYPE_NAME(T_ZOMBIE);
+		TYPE_NAME(T_DATA);
+	      default:
+		syms[i] = ID2SYM(rb_intern("unknown"));
 #undef TYPE_NAME
+	    }
+	}
     }
-    return "unknown";
+
+    return syms[type];
 }
 
 struct arg_and_result {
@@ -467,14 +529,6 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 			  INT2FIX(val_buff[4]), INT2FIX(val_buff[5]));
     VALUE k = rb_ary_new();
     int i = 0;
-    static VALUE type_symbols[T_MASK] = {0};
-
-    if (type_symbols[0] == 0) {
-	int i;
-	for (i=0; i<T_MASK; i++) {
-	    type_symbols[i] = ID2SYM(rb_intern(type_name(i)));
-	}
-    }
 
     i = 0;
     if (arg->keys & KEY_PATH) {
@@ -493,7 +547,7 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
     if (arg->keys & KEY_TYPE) {
 	int sym_index = key_buff->data[i++];
 	assert(T_MASK > sym_index);
-	rb_ary_push(k, type_symbols[sym_index]);
+	rb_ary_push(k, type_sym(sym_index));
     }
     if (arg->keys & KEY_CLASS) {
 	VALUE klass = key_buff->data[i++];
@@ -532,6 +586,32 @@ aggregate_live_object_i(st_data_t key, st_data_t val, void *data)
     return ST_CONTINUE;
 }
 
+static int
+lifetime_table_for_live_objects_i(st_data_t key, st_data_t val, st_data_t data)
+{
+    struct allocation_info *info = (struct allocation_info *)val;
+    VALUE h = (VALUE)data;
+    int type = info->flags & T_MASK;
+    VALUE sym = type_sym(type);
+    size_t age = rb_gc_count() - info->generation;
+    VALUE line;
+    size_t count, i;
+
+    if ((line = rb_hash_aref(h, sym)) == Qnil) {
+	line = rb_ary_new();
+	rb_hash_aset(h, sym, line);
+    }
+
+    for (i=RARRAY_LEN(line); i<age+1; i++) {
+	rb_ary_push(line, INT2FIX(0));
+    }
+
+    count = NUM2SIZET(RARRAY_AREF(line, age));
+    RARRAY_ASET(line, age, SIZET2NUM(count + 1));
+
+    return ST_CONTINUE;
+}
+
 static VALUE
 aggregate_result(struct traceobj_arg *arg)
 {
@@ -560,15 +640,33 @@ aggregate_result(struct traceobj_arg *arg)
 
 	arg->aggregate_table = dead_object_aggregate_table;
     }
-    return aar.result;
-}
 
-static VALUE
-allocation_tracer_stop(VALUE self)
-{
-    VALUE result = aggregate_result(get_traceobj_arg());
-    stop_alloc_hooks(self);
-    return result;
+    /* lifetime table */
+    if (arg->lifetime_table) {
+	VALUE h = rb_hash_new();
+	int i;
+
+	for (i=0; i<T_MASK; i++) {
+	    size_t *line = arg->lifetime_table[i];
+
+	    if (line) {
+		size_t len = line[0], j;
+		VALUE ary = rb_ary_new();
+		VALUE sym = type_sym(i);
+
+		for (j=0; j<len; j++) {
+		    rb_ary_push(ary, SIZET2NUM(line[j+1]));
+		}
+
+		rb_hash_aset(h, sym, ary);
+	    }
+	}
+
+	st_foreach(arg->object_table, lifetime_table_for_live_objects_i, (st_data_t)h);
+	rb_ivar_set(rb_mAllocationTracer, rb_intern("lifetime_table"), h);
+    }
+
+    return aar.result;
 }
 
 static VALUE
@@ -576,8 +674,6 @@ allocation_tracer_result(VALUE self)
 {
     VALUE result;
     struct traceobj_arg *arg = get_traceobj_arg();
-
-    check_tracer_running();
 
     disable_newobj_hook();
     result = aggregate_result(arg);
@@ -621,9 +717,19 @@ allocation_tracer_trace(VALUE self)
 }
 
 static VALUE
+allocation_tracer_stop(VALUE self)
+{
+    VALUE result;
+
+    disable_newobj_hook();
+    result = aggregate_result(get_traceobj_arg());
+    stop_alloc_hooks(self);
+    return result;
+}
+
+static VALUE
 allocation_tracer_pause(VALUE self)
 {
-    check_tracer_running();
     disable_newobj_hook();
     return Qnil;
 }
@@ -631,7 +737,6 @@ allocation_tracer_pause(VALUE self)
 static VALUE
 allocation_tracer_resume(VALUE self)
 {
-    check_tracer_running();
     enable_newobj_hook();
     return Qnil;
 }
@@ -689,6 +794,39 @@ allocation_tracer_header(VALUE self)
     return ary;
 }
 
+static VALUE
+allocation_tracer_lifetime_table_setup(VALUE self, VALUE set)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+
+    if (arg->running) {
+	rb_raise(rb_eRuntimeError, "can't change configuration during running");
+    }
+
+    if (RTEST(set)) {
+	if (arg->lifetime_table == NULL) {
+	    arg->lifetime_table = (size_t **)calloc(sizeof(size_t **), T_MASK);
+	    
+	}
+    }
+    else {
+	if (arg->lifetime_table != NULL) {
+	    free(arg->lifetime_table);
+	    arg->lifetime_table = NULL;
+	}
+    }
+
+    return Qnil;
+}
+
+static VALUE
+allocation_tracer_lifetime_table(VALUE self)
+{
+    VALUE result = rb_ivar_get(rb_mAllocationTracer, rb_intern("lifetime_table"));
+    rb_ivar_set(rb_mAllocationTracer, rb_intern("lifetime_table"), Qnil);
+    return result;
+}
+
 void
 Init_allocation_tracer(void)
 {
@@ -706,4 +844,7 @@ Init_allocation_tracer(void)
     rb_define_module_function(mod, "clear", allocation_tracer_clear, 0);
     rb_define_module_function(mod, "setup", allocation_tracer_setup, -1);
     rb_define_module_function(mod, "header", allocation_tracer_header, 0);
+
+    rb_define_module_function(mod, "lifetime_table_setup", allocation_tracer_lifetime_table_setup, 1);
+    rb_define_module_function(mod, "lifetime_table", allocation_tracer_lifetime_table, 0);
 }

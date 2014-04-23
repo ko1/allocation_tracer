@@ -164,4 +164,43 @@ describe ObjectSpace::AllocationTracer do
       end
     end
   end
+
+  describe 'collect lifetime_table' do
+    before do
+      ObjectSpace::AllocationTracer.lifetime_table_setup true
+    end
+
+    after do
+      ObjectSpace::AllocationTracer.lifetime_table_setup false
+    end
+
+    it 'should make lifetime table' do
+      ObjectSpace::AllocationTracer.trace do
+        100000.times{
+          Object.new
+          ''
+        }
+      end
+      table = ObjectSpace::AllocationTracer.lifetime_table
+
+      expect(table[:T_OBJECT].inject(&:+)).to be >= 10_000
+      expect(table[:T_STRING].inject(&:+)).to be >= 10_000
+      expect(table[:T_NONE]).to be nil
+    end
+
+    it 'should nil when ObjectSpace::AllocationTracer.lifetime_table_setup is nil' do
+      ObjectSpace::AllocationTracer.lifetime_table_setup false
+
+      ObjectSpace::AllocationTracer.trace do
+        100000.times{
+          Object.new
+          ''
+        }
+      end
+
+      table = ObjectSpace::AllocationTracer.lifetime_table
+
+      expect(table).to be nil
+    end
+  end
 end
