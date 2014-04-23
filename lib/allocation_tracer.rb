@@ -23,5 +23,6 @@ module ObjectSpace::AllocationTracer
     ObjectSpace::AllocationTracer.stop
     result = ObjectSpace::AllocationTracer.lifetime_table
     ObjectSpace::AllocationTracer.lifetime_table_setup false
+    result
   end
 end
