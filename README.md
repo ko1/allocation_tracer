@@ -179,11 +179,11 @@ will show
 
 This output means that the age of 3434 T_OBJECT objects are 0, 96563 
 objects are 1 and 2 objects are 7. Also the age of 3435 T_STRING 
-objects are 0, 96556 are 1 and so on.
+objects are 0, 96556 objects are 1 and so on.
 
-Note that these number includes living objects and dead objects.  For 
-dead object, age means lifetime. For living objects, age means current 
-age.
+Note that these numbers includes living objects and dead objects.  For 
+dead objects, age means lifetime. For living objects, age means 
+current age.
 
 ## Contributing
 
