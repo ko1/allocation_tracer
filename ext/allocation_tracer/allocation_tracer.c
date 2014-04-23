@@ -200,7 +200,7 @@ clear_traceobj_arg(void)
     st_clear(arg->object_table);
     st_foreach(arg->str_table, free_keys_i, 0);
     st_clear(arg->str_table);
-    arg->freed_allocation_info = 0;
+    arg->freed_allocation_info = NULL;
     delete_lifetime_table(arg);
 }
 
@@ -331,10 +331,15 @@ aggregate_freed_info(void *data)
 }
 
 static void
-move_to_freed_list(struct traceobj_arg *arg, struct allocation_info *info)
+move_to_freed_list(struct traceobj_arg *arg, VALUE obj, struct allocation_info *info)
 {
+    if (arg->freed_allocation_info == NULL) {
+	rb_postponed_job_register_one(0, aggregate_freed_info, arg);
+    }
+
     info->next = arg->freed_allocation_info;
     arg->freed_allocation_info = info;
+    st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
 }
 
 static void
@@ -380,13 +385,11 @@ freeobj_i(VALUE tpval, void *data)
     struct allocation_info *info;
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
+
 	info->flags = RBASIC(obj)->flags;
 	info->memsize = rb_obj_memsize_of(obj);
-	move_to_freed_list(arg, info);
-	st_delete(arg->object_table, (st_data_t *)&obj, (st_data_t *)&info);
-	if (arg->freed_allocation_info == NULL) {
-	    rb_postponed_job_register_one(0, aggregate_freed_info, arg);
-	}
+
+	move_to_freed_list(arg, obj, info);
 
 	if (arg->lifetime_table) {
 	    add_lifetime_table(arg->lifetime_table, BUILTIN_TYPE(obj), info);
