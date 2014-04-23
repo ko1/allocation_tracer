@@ -177,6 +177,19 @@ free_key_values_i(st_data_t key, st_data_t value, void *data)
 }
 
 static void
+delete_lifetime_table(struct traceobj_arg *arg)
+{
+    int i;
+    if (arg->lifetime_table) {
+	for (i=0; i<T_MASK; i++) {
+	    free(arg->lifetime_table[i]);
+	}
+	free(arg->lifetime_table);
+	arg->lifetime_table = NULL;
+    }
+}
+
+static void
 clear_traceobj_arg(void)
 {
     struct traceobj_arg * arg = get_traceobj_arg();
@@ -187,17 +200,8 @@ clear_traceobj_arg(void)
     st_clear(arg->object_table);
     st_foreach(arg->str_table, free_keys_i, 0);
     st_clear(arg->str_table);
-
-    if (arg->lifetime_table) {
-	int i;
-
-	for (i=0; i<T_MASK; i++) {
-	    if (arg->lifetime_table[i] != NULL) {
-		free(arg->lifetime_table[i]);
-		arg->lifetime_table[i] = NULL;
-	    }
-	}
-    }
+    arg->freed_allocation_info = 0;
+    delete_lifetime_table(arg);
 }
 
 static struct allocation_info *
@@ -316,11 +320,13 @@ aggregate_freed_info(void *data)
 
     arg->freed_allocation_info = NULL;
 
-    while (info) {
-	struct allocation_info *next_info = info->next;
-	aggregate_each_info(arg, info, gc_count);
-	free_allocation_info(arg, info);
-	info = next_info;
+    if (arg->running) {
+	while (info) {
+	    struct allocation_info *next_info = info->next;
+	    aggregate_each_info(arg, info, gc_count);
+	    free_allocation_info(arg, info);
+	    info = next_info;
+	}
     }
 }
 
@@ -340,9 +346,9 @@ add_lifetime_table(size_t **lines, int type, struct allocation_info *info)
 
     if (line == NULL) {
 	len = age + 1;
-	line = lines[type] = malloc(sizeof(size_t) * (1 + len));
+	line = lines[type] = calloc(1 + len, sizeof(size_t));
+	assert(line != NULL);
 	line[0] = len;
-	for (i=0; i<len; i++) line[i+1] = 0;
     }
     else {
 	len = line[0];
@@ -351,12 +357,18 @@ add_lifetime_table(size_t **lines, int type, struct allocation_info *info)
 	    size_t old_len = len;
 	    len = age + 1;
 	    line = lines[type] = realloc(line, sizeof(size_t) * (1 + len));
-	    for (i=old_len; i<len; i++) line[i+1] = 0;
+
+	    assert(line != NULL);
+
+	    for (i=old_len; i<len; i++) {
+		line[i+1] = 0;
+	    }
+
 	    line[0] = len;
 	}
     }
 
-    line[age + 1]++;
+    line[1 + age]++;
 }
 
 static void
@@ -467,7 +479,7 @@ stop_alloc_hooks(VALUE self)
 static VALUE
 type_sym(int type)
 {
-    static VALUE syms[T_MASK];
+    static VALUE syms[T_MASK] = {0};
 
     if (syms[0] == 0) {
 	int i;
@@ -501,6 +513,7 @@ type_sym(int type)
 		TYPE_NAME(T_DATA);
 	      default:
 		syms[i] = ID2SYM(rb_intern("unknown"));
+		break;
 #undef TYPE_NAME
 	    }
 	}
@@ -546,7 +559,6 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
     }
     if (arg->keys & KEY_TYPE) {
 	int sym_index = key_buff->data[i++];
-	assert(T_MASK > sym_index);
 	rb_ary_push(k, type_sym(sym_index));
     }
     if (arg->keys & KEY_CLASS) {
@@ -646,6 +658,8 @@ aggregate_result(struct traceobj_arg *arg)
 	VALUE h = rb_hash_new();
 	int i;
 
+	rb_ivar_set(rb_mAllocationTracer, rb_intern("lifetime_table"), h);
+
 	for (i=0; i<T_MASK; i++) {
 	    size_t *line = arg->lifetime_table[i];
 
@@ -654,16 +668,15 @@ aggregate_result(struct traceobj_arg *arg)
 		VALUE ary = rb_ary_new();
 		VALUE sym = type_sym(i);
 
+		rb_hash_aset(h, sym, ary);
+
 		for (j=0; j<len; j++) {
 		    rb_ary_push(ary, SIZET2NUM(line[j+1]));
 		}
-
-		rb_hash_aset(h, sym, ary);
 	    }
 	}
 
 	st_foreach(arg->object_table, lifetime_table_for_live_objects_i, (st_data_t)h);
-	rb_ivar_set(rb_mAllocationTracer, rb_intern("lifetime_table"), h);
     }
 
     return aar.result;
@@ -805,15 +818,11 @@ allocation_tracer_lifetime_table_setup(VALUE self, VALUE set)
 
     if (RTEST(set)) {
 	if (arg->lifetime_table == NULL) {
-	    arg->lifetime_table = (size_t **)calloc(sizeof(size_t **), T_MASK);
-	    
+	    arg->lifetime_table = (size_t **)calloc(T_MASK, sizeof(size_t **));
 	}
     }
     else {
-	if (arg->lifetime_table != NULL) {
-	    free(arg->lifetime_table);
-	    arg->lifetime_table = NULL;
-	}
+	delete_lifetime_table(arg);
     }
 
     return Qnil;

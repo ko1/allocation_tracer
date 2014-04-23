@@ -217,4 +217,19 @@ describe ObjectSpace::AllocationTracer do
       expect(table).to be nil
     end
   end
+
+  describe 'ObjectSpace::AllocationTracer.collect_lifetime_talbe' do
+    it 'should collect lifetime table' do
+      table = ObjectSpace::AllocationTracer.collect_lifetime_talbe do
+        100000.times{
+          Object.new
+          ''
+        }
+      end
+
+      expect(table[:T_OBJECT].inject(&:+)).to be >= 10_000
+      expect(table[:T_STRING].inject(&:+)).to be >= 10_000
+      expect(table[:T_NONE]).to be nil
+    end
+  end
 end
