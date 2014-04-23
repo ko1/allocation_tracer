@@ -188,7 +188,7 @@ describe ObjectSpace::AllocationTracer do
       expect(table[:T_NONE]).to be nil
     end
 
-    it 'should nil when ObjectSpace::AllocationTracer.lifetime_table_setup is nil' do
+    it 'should return nil when ObjectSpace::AllocationTracer.lifetime_table_setup is false' do
       ObjectSpace::AllocationTracer.lifetime_table_setup false
 
       ObjectSpace::AllocationTracer.trace do
@@ -198,6 +198,20 @@ describe ObjectSpace::AllocationTracer do
         }
       end
 
+      table = ObjectSpace::AllocationTracer.lifetime_table
+
+      expect(table).to be nil
+    end
+
+    it 'should return nil getting it twice' do
+      ObjectSpace::AllocationTracer.trace do
+        100000.times{
+          Object.new
+          ''
+        }
+      end
+
+      table = ObjectSpace::AllocationTracer.lifetime_table
       table = ObjectSpace::AllocationTracer.lifetime_table
 
       expect(table).to be nil
