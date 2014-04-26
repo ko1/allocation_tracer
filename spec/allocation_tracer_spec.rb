@@ -25,6 +25,23 @@ describe ObjectSpace::AllocationTracer do
       expect(result[[__FILE__, line]]).to eq [1, 0, 0, 0, 0, 0]
     end
 
+    it 'should analyze many objects' do
+      line = __LINE__ + 3
+      result = ObjectSpace::AllocationTracer.trace do
+        50_000.times{|i|
+          i.to_s
+          i.to_s
+          i.to_s
+        }
+      end
+      #GC.start
+      #pp result
+
+      expect(result[[__FILE__, line + 0]][0]).to be >= 50_000
+      expect(result[[__FILE__, line + 1]][0]).to be >= 50_000
+      expect(result[[__FILE__, line + 2]][0]).to be >= 50_000
+    end
+
     it 'should count old objects' do
       a = nil
       line = __LINE__ + 2

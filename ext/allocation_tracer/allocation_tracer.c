@@ -526,6 +526,7 @@ type_sym(int type)
 }
 
 struct arg_and_result {
+    int update;
     struct traceobj_arg *arg;
     VALUE result;
 };
@@ -536,14 +537,9 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
     struct arg_and_result *aar = (struct arg_and_result *)data;
     struct traceobj_arg *arg = aar->arg;
     VALUE result = aar->result;
-
     size_t *val_buff = (size_t *)val;
     struct memcmp_key_data *key_buff = (struct memcmp_key_data *)key;
-    VALUE v = rb_ary_new3(6,
-			  INT2FIX(val_buff[0]), INT2FIX(val_buff[1]),
-			  INT2FIX(val_buff[2]), INT2FIX(val_buff[3]),
-			  INT2FIX(val_buff[4]), INT2FIX(val_buff[5]));
-    VALUE k = rb_ary_new();
+    VALUE v, oldv, k = rb_ary_new();
     int i = 0;
 
     i = 0;
@@ -575,6 +571,25 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 	else {
 	    rb_ary_push(k, Qnil);
 	}
+    }
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+    if (aar->update && (oldv = rb_hash_aref(result, k)) != Qnil) {
+	v = rb_ary_new3(6,
+			INT2FIX(val_buff[0] + FIX2INT(RARRAY_AREF(oldv, 0))), /* count */
+			INT2FIX(val_buff[1] + FIX2INT(RARRAY_AREF(oldv, 1))), /* old count */
+			INT2FIX(val_buff[2] + FIX2INT(RARRAY_AREF(oldv, 2))), /* total_age */
+			INT2FIX(MIN(val_buff[3], FIX2INT(RARRAY_AREF(oldv, 3)))), /* min age */
+			INT2FIX(MAX(val_buff[4], FIX2INT(RARRAY_AREF(oldv, 4)))), /* max age */
+			INT2FIX(val_buff[5] + FIX2INT(RARRAY_AREF(oldv, 5)))); /* memsize_of */
+    }
+    else {
+	v = rb_ary_new3(6,
+			INT2FIX(val_buff[0]), INT2FIX(val_buff[1]),
+			INT2FIX(val_buff[2]), INT2FIX(val_buff[3]),
+			INT2FIX(val_buff[4]), INT2FIX(val_buff[5]));
     }
 
     rb_hash_aset(result, k, v);
@@ -627,6 +642,12 @@ lifetime_table_for_live_objects_i(st_data_t key, st_data_t val, st_data_t data)
     return ST_CONTINUE;
 }
 
+static int
+st_size(struct st_table *st)
+{
+    return st->num_bins;
+}
+
 static VALUE
 aggregate_result(struct traceobj_arg *arg)
 {
@@ -634,11 +655,14 @@ aggregate_result(struct traceobj_arg *arg)
     aar.result = rb_hash_new();
     aar.arg = arg;
 
-    /* aggregated table -> Ruby hash */
-    aggregate_freed_info(arg);
+    while (arg->freed_allocation_info) {
+	aggregate_freed_info(arg);
+    }
+
+    /* collect from recent-freed objects */
+    aar.update = 0;
     st_foreach(arg->aggregate_table, aggregate_result_i, (st_data_t)&aar);
 
-    /* collect live aggregate table */
     {
 	st_table *dead_object_aggregate_table = arg->aggregate_table;
 
@@ -647,6 +671,7 @@ aggregate_result(struct traceobj_arg *arg)
 	st_foreach(arg->object_table, aggregate_live_object_i, (st_data_t)arg);
 
 	/* aggregate table -> Ruby hash */
+	aar.update = 1;
 	st_foreach(arg->aggregate_table, aggregate_result_i, (st_data_t)&aar);
 
 	/* remove live object aggregate table */
