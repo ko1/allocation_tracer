@@ -55,9 +55,9 @@ pp ObjectSpace::AllocationTracer.trace{
 will show
 
 ```
-{["test.rb", 6]=>[8397, 5, 5859, 0, 5, 0],
- ["test.rb", 7]=>[8396, 2, 5852, 0, 6, 0],
- ["test.rb", 8]=>[8399, 6, 5863, 0, 6, 0]}
+{["test.rb", 6]=>[50000, 0, 47440, 0, 1, 0],
+ ["test.rb", 7]=>[50000, 4, 47452, 0, 6, 0],
+ ["test.rb", 8]=>[50000, 7, 47456, 0, 6, 0]}
 ```
 
 In this case, 
@@ -90,12 +90,12 @@ pp result
 and you will get:
 
 ```
-{["test.rb", 8, :T_STRING]=>[3125, 16, 2280, 0, 16, 0],
- ["test.rb", 8, :T_ARRAY]=>[3121, 11, 2240, 0, 16, 0],
- ["test.rb", 9, :T_STRING]=>[6244, 23, 4489, 0, 16, 0],
- ["test.rb", 9, :T_HASH]=>[3126, 16, 2279, 0, 16, 0],
- ["test.rb", 10, :T_STRING]=>[6262, 44, 4637, 0, 16, 0],
- ["test.rb", 10, :T_STRUCT]=>[3126, 16, 2278, 0, 16, 0]}
+{["test.rb", 8, :T_STRING]=>[50000, 15, 49165, 0, 16, 0],
+ ["test.rb", 8, :T_ARRAY]=>[50000, 12, 49134, 0, 16, 0],
+ ["test.rb", 9, :T_STRING]=>[100000, 27, 98263, 0, 16, 0],
+ ["test.rb", 9, :T_HASH]=>[50000, 16, 49147, 0, 16, 8998848],
+ ["test.rb", 10, :T_STRING]=>[100000, 36, 98322, 0, 16, 0],
+ ["test.rb", 10, :T_STRUCT]=>[50000, 16, 49147, 0, 16, 0]}
 ```
 
 Interestingly, you can not see array creations in a middle of block:
@@ -144,12 +144,12 @@ and you will see:
 
 ```
 path    line    count   old_count       total_age       min_age max_age total_memsize
-.../ruby/2.2.0/rubygems/core_ext/kernel_require.rb 55     11       6       6       6       0
-.../lib/allocation_tracer/trace.rb       6       2      012      6       6       0
+...rubygems/core_ext/kernel_require.rb 55     18       1       23      1       6       358
+...lib/allocation_tracer/lib/allocation_tracer/trace.rb       6       2      012      6       6       0
 test.rb 0       1       0       0       0       0       0
-test.rb 5       8513    4       12      0       5       0
-test.rb 6       8512    2       8       0       5       0
-test.rb 7       8516    6       19      0       5       0
+test.rb 5       50000   4       41492   0       5       0
+test.rb 6       50000   3       41490   0       5       0
+test.rb 7       50000   7       41497   0       5       0
 ```
 
 (tab separated colums)
