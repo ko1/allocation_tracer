@@ -30,10 +30,10 @@ Or install it yourself as:
 
 You can trace allocation and aggregate information. Information includes:
 
-    count - how many objects are created.
-    total_age - total age of objects which created here
-    max_age - age of longest living object created here
-    min_age - age of shortest living object created here
+* count - how many objects are created.
+* total_age - total age of objects which created here
+* max_age - age of longest living object created here
+* min_age - age of shortest living object created here
 
 Age of Object can be calculated by this formula: [current GC count] - [birth time GC count]
 
@@ -55,14 +55,17 @@ pp ObjectSpace::AllocationTracer.trace{
 will show
 
 ```
-{["test.rb", 6]=>[50000, 44290, 0, 6],
- ["test.rb", 7]=>[50000, 44289, 0, 5],
- ["test.rb", 8]=>[50000, 44295, 0, 6]}
+{["test.rb", 6]=>[8397, 5, 5859, 0, 5, 0],
+ ["test.rb", 7]=>[8396, 2, 5852, 0, 6, 0],
+ ["test.rb", 8]=>[8399, 6, 5863, 0, 6, 0]}
 ```
 
-In this case, 50,000 objects are created at `test.rb:6'. 44,290 is total 
-age of objects created at this line. Average age of object created at 
-this line is 50000/44290 = 0.8858. 0 is minimum age and 6 is maximum age.
+In this case, 
+* 50,000 objects are created at `test.rb:6' and
+  * 5 old objects created.
+  * 44,290 is total age of objects created at this line (average age of object created at this line is 50000/44290 = 0.8858).
+  * 0 is minimum age
+  * 6 is maximum age.
 
 You can also specify `type' in GC::Tracer.setup_allocation_tracing() to 
 specify what should be keys to aggregate like that.
