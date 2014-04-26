@@ -90,12 +90,12 @@ pp result
 and you will get:
 
 ```
-{["test.rb", 8, :T_STRING]=>[50000, 49067, 0, 17],
- ["test.rb", 8, :T_ARRAY]=>[50000, 49053, 0, 17],
- ["test.rb", 9, :T_STRING]=>[100000, 98146, 0, 17],
- ["test.rb", 9, :T_HASH]=>[50000, 49111, 0, 17],
- ["test.rb", 10, :T_STRING]=>[100000, 98267, 0, 17],
- ["test.rb", 10, :T_STRUCT]=>[50000, 49126, 0, 17]}
+{["test.rb", 8, :T_STRING]=>[3125, 16, 2280, 0, 16, 0],
+ ["test.rb", 8, :T_ARRAY]=>[3121, 11, 2240, 0, 16, 0],
+ ["test.rb", 9, :T_STRING]=>[6244, 23, 4489, 0, 16, 0],
+ ["test.rb", 9, :T_HASH]=>[3126, 16, 2279, 0, 16, 0],
+ ["test.rb", 10, :T_STRING]=>[6262, 44, 4637, 0, 16, 0],
+ ["test.rb", 10, :T_STRUCT]=>[3126, 16, 2278, 0, 16, 0]}
 ```
 
 Interestingly, you can not see array creations in a middle of block:
@@ -119,7 +119,7 @@ pp result
 and it prints:
 
 ```
-{["test.rb", 8, :T_STRING]=>[50000, 38322, 0, 2]}
+{["test.rb", 8, :T_STRING]=>[25015, 5, 16299, 0, 2, 0]}
 ```
 
 There are only string creation. This is because unused array creation is 
@@ -143,13 +143,13 @@ require 'allocation_tracer/trace'
 and you will see:
 
 ```
-path    line    count   total_age       max_age min_age
-.../lib/ruby/2.2.0/rubygems/core_ext/kernel_require.rb 55      18      23      1       6
-.../lib/allocation_tracer/trace.rb       6       2       12      6       6
-test.rb 0       1       0       0       0
-test.rb 5       50000   41645   0       4
-test.rb 6       50000   41648   0       5
-test.rb 7       50000   41650   0       5
+path    line    count   old_count       total_age       min_age max_age total_memsize
+.../ruby/2.2.0/rubygems/core_ext/kernel_require.rb 55     11       6       6       6       0
+.../lib/allocation_tracer/trace.rb       6       2      012      6       6       0
+test.rb 0       1       0       0       0       0       0
+test.rb 5       8513    4       12      0       5       0
+test.rb 6       8512    2       8       0       5       0
+test.rb 7       8516    6       19      0       5       0
 ```
 
 (tab separated colums)
