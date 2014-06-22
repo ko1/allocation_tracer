@@ -24,6 +24,8 @@ struct traceobj_arg {
 
     /* */
     size_t **lifetime_table;
+    size_t allocated_count_table[T_MASK];
+    size_t freed_count_table[T_MASK];
 };
 
 struct allocation_info {
@@ -142,6 +144,7 @@ get_traceobj_arg(void)
 {
     if (tmp_trace_arg == 0) {
 	tmp_trace_arg = ALLOC_N(struct traceobj_arg, 1);
+	MEMZERO(tmp_trace_arg, struct traceobj_arg, 1);
 	tmp_trace_arg->running = 0;
 	tmp_trace_arg->keys = 0;
 	tmp_trace_arg->vals = VAL_COUNT | VAL_OLDCOUNT | VAL_TOTAL_AGE | VAL_MAX_AGE | VAL_MIN_AGE | VAL_MEMSIZE;
@@ -251,6 +254,8 @@ newobj_i(VALUE tpval, void *data)
     info->line = NUM2INT(line);
 
     st_insert(arg->object_table, (st_data_t)obj, (st_data_t)info);
+
+    arg->allocated_count_table[BUILTIN_TYPE(obj)]++;
 }
 
 /* file, line, type, klass */
@@ -395,6 +400,8 @@ freeobj_i(VALUE tpval, void *data)
 	    add_lifetime_table(arg->lifetime_table, BUILTIN_TYPE(obj), info);
 	}
     }
+
+    arg->freed_count_table[BUILTIN_TYPE(obj)]++;
 }
 
 static void
@@ -864,6 +871,38 @@ allocation_tracer_lifetime_table(VALUE self)
     return result;
 }
 
+static VALUE
+allocation_tracer_allocated_count_table(VALUE self)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+    VALUE h = rb_hash_new();
+    VALUE type;
+    int i;
+
+    for (i=0; i<T_MASK; i++) {
+	type = type_sym(i);
+	rb_hash_aset(h, ID2SYM(type), SIZET2NUM(arg->allocated_count_table[i]));
+    }
+
+    return h;
+}
+
+static VALUE
+allocation_tracer_freed_count_table(VALUE self)
+{
+    struct traceobj_arg * arg = get_traceobj_arg();
+    VALUE h = rb_hash_new();
+    VALUE type;
+    int i;
+
+    for (i=0; i<T_MASK; i++) {
+	type = type_sym(i);
+	rb_hash_aset(h, ID2SYM(type), SIZET2NUM(arg->freed_count_table[i]));
+    }
+
+    return h;
+}
+
 void
 Init_allocation_tracer(void)
 {
@@ -884,4 +923,7 @@ Init_allocation_tracer(void)
 
     rb_define_module_function(mod, "lifetime_table_setup", allocation_tracer_lifetime_table_setup, 1);
     rb_define_module_function(mod, "lifetime_table", allocation_tracer_lifetime_table, 0);
+
+    rb_define_module_function(mod, "allocated_count_table", allocation_tracer_allocated_count_table, 0);
+    rb_define_module_function(mod, "freed_count_table", allocation_tracer_freed_count_table, 0);
 }
