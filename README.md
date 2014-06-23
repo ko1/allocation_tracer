@@ -154,6 +154,31 @@ test.rb 7       50000   7       41497   0       5       0
 
 (tab separated colums)
 
+### Total Allocations / Free
+
+Allocation tracer collects the total number of allocations and frees during the
+`trace` block.  After the block finishes executing, you can examine the total
+number of allocations / frees per object type like this:
+
+```ruby
+require 'allocation_tracer'
+
+ObjectSpace::AllocationTracer.trace do
+  1000.times {
+    ["foo", {}]
+  }
+end
+p allocated: ObjectSpace::AllocationTracer.allocated_count_table
+p freed: ObjectSpace::AllocationTracer.freed_count_table
+```
+
+The output of the script will look like this:
+
+```
+{:allocated=>{:T_NONE=>0, :T_OBJECT=>0, :T_CLASS=>0, :T_MODULE=>0, :T_FLOAT=>0, :T_STRING=>1000, :T_REGEXP=>0, :T_ARRAY=>1000, :T_HASH=>1000, :T_STRUCT=>0, :T_BIGNUM=>0, :T_FILE=>0, :T_DATA=>0, :T_MATCH=>0, :T_COMPLEX=>0, :T_RATIONAL=>0, :unknown=>0, :T_NIL=>0, :T_TRUE=>0, :T_FALSE=>0, :T_SYMBOL=>0, :T_FIXNUM=>0, :T_UNDEF=>0, :T_NODE=>0, :T_ICLASS=>0, :T_ZOMBIE=>0}}
+{:freed=>{:T_NONE=>0, :T_OBJECT=>0, :T_CLASS=>0, :T_MODULE=>0, :T_FLOAT=>0, :T_STRING=>1871, :T_REGEXP=>41, :T_ARRAY=>226, :T_HASH=>7, :T_STRUCT=>41, :T_BIGNUM=>0, :T_FILE=>50, :T_DATA=>25, :T_MATCH=>47, :T_COMPLEX=>0, :T_RATIONAL=>0, :unknown=>0, :T_NIL=>0, :T_TRUE=>0, :T_FALSE=>0, :T_SYMBOL=>0, :T_FIXNUM=>0, :T_UNDEF=>0, :T_NODE=>932, :T_ICLASS=>0, :T_ZOMBIE=>0}}
+```
+
 ### Lifetime table
 
 You can collect lifetime statistics with 
