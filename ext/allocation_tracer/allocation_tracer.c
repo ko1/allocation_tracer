@@ -875,12 +875,10 @@ allocation_tracer_allocated_count_table(VALUE self)
 {
     struct traceobj_arg * arg = get_traceobj_arg();
     VALUE h = rb_hash_new();
-    VALUE type;
     int i;
 
     for (i=0; i<T_MASK; i++) {
-	type = type_sym(i);
-	rb_hash_aset(h, ID2SYM(type), SIZET2NUM(arg->allocated_count_table[i]));
+	rb_hash_aset(h, type_sym(i), SIZET2NUM(arg->allocated_count_table[i]));
     }
 
     return h;
@@ -891,12 +889,10 @@ allocation_tracer_freed_count_table(VALUE self)
 {
     struct traceobj_arg * arg = get_traceobj_arg();
     VALUE h = rb_hash_new();
-    VALUE type;
     int i;
 
     for (i=0; i<T_MASK; i++) {
-	type = type_sym(i);
-	rb_hash_aset(h, ID2SYM(type), SIZET2NUM(arg->freed_count_table[i]));
+	rb_hash_aset(h, type_sym(i), SIZET2NUM(arg->freed_count_table[i]));
     }
 
     return h;

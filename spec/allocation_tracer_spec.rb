@@ -249,4 +249,18 @@ describe ObjectSpace::AllocationTracer do
       expect(table[:T_NONE]).to be nil
     end
   end
+
+  describe 'ObjectSpace::AllocationTracer.allocated_count_table' do
+    it 'should return a Hash object' do
+      h = ObjectSpace::AllocationTracer.allocated_count_table
+      expect(h[:T_NONE]).to be 0
+    end
+  end
+
+  describe 'ObjectSpace::AllocationTracer.freed_count_table' do
+    it 'should return a Hash object' do
+      h = ObjectSpace::AllocationTracer.freed_count_table
+      expect(h[:T_NONE]).to be 0
+    end
+  end
 end
