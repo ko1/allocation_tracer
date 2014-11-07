@@ -294,7 +294,7 @@ aggregate_each_info(struct traceobj_arg *arg, struct allocation_info *info, size
 	}
 	key = (st_data_t)key_buff;
 
-	/* count, total age, max age, min age */
+	/* count, old count, total age, max age, min age */
 	val_buff = ALLOC_N(size_t, 6);
 	val_buff[0] = val_buff[1] = val_buff[2] = 0;
 	val_buff[3] = val_buff[4] = age;
@@ -309,7 +309,12 @@ aggregate_each_info(struct traceobj_arg *arg, struct allocation_info *info, size
     }
 
     val_buff[0] += 1;
+#ifdef FL_PROMOTED
     if (info->flags & FL_PROMOTED) val_buff[1] += 1;
+#elif defined(FL_PROMOTED0) && defined(FL_PROMOTED1)
+    if (info->flags & FL_PROMOTED0 &&
+	info->flags & FL_PROMOTED1) val_buff[1] += 1;
+#endif
     val_buff[2] += age;
     if (val_buff[3] > age) val_buff[3] = age; /* min */
     if (val_buff[4] < age) val_buff[4] = age; /* max */
@@ -585,12 +590,12 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 
     if (aar->update && (oldv = rb_hash_aref(result, k)) != Qnil) {
 	v = rb_ary_new3(6,
-			INT2FIX(val_buff[0] + FIX2INT(RARRAY_AREF(oldv, 0))), /* count */
-			INT2FIX(val_buff[1] + FIX2INT(RARRAY_AREF(oldv, 1))), /* old count */
-			INT2FIX(val_buff[2] + FIX2INT(RARRAY_AREF(oldv, 2))), /* total_age */
-			INT2FIX(MIN(val_buff[3], FIX2INT(RARRAY_AREF(oldv, 3)))), /* min age */
-			INT2FIX(MAX(val_buff[4], FIX2INT(RARRAY_AREF(oldv, 4)))), /* max age */
-			INT2FIX(val_buff[5] + FIX2INT(RARRAY_AREF(oldv, 5)))); /* memsize_of */
+			INT2FIX(val_buff[0] + (size_t)FIX2INT(RARRAY_AREF(oldv, 0))), /* count */
+			INT2FIX(val_buff[1] + (size_t)FIX2INT(RARRAY_AREF(oldv, 1))), /* old count */
+			INT2FIX(val_buff[2] + (size_t)FIX2INT(RARRAY_AREF(oldv, 2))), /* total_age */
+			INT2FIX(MIN(val_buff[3], (size_t)FIX2INT(RARRAY_AREF(oldv, 3)))), /* min age */
+			INT2FIX(MAX(val_buff[4], (size_t)FIX2INT(RARRAY_AREF(oldv, 4)))), /* max age */
+			INT2FIX(val_buff[5] + (size_t)FIX2INT(RARRAY_AREF(oldv, 5)))); /* memsize_of */
     }
     else {
 	v = rb_ary_new3(6,
@@ -647,12 +652,6 @@ lifetime_table_for_live_objects_i(st_data_t key, st_data_t val, st_data_t data)
     RARRAY_ASET(line, age, SIZET2NUM(count + 1));
 
     return ST_CONTINUE;
-}
-
-static int
-st_size(struct st_table *st)
-{
-    return st->num_bins;
 }
 
 static VALUE
