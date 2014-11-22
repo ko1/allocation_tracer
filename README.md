@@ -63,7 +63,7 @@ will show
 In this case, 
 * 50,000 objects are created at `test.rb:6' and
   * 5 old objects created.
-  * 44,290 is total age of objects created at this line (average age of object created at this line is 50000/44290 = 0.8858).
+  * 44,290 is total age of objects created at this line (average age of object created at this line is 44290/50000 = 0.8858).
   * 0 is minimum age
   * 6 is maximum age.
 
