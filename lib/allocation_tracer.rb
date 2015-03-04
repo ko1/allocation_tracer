@@ -12,7 +12,7 @@ module ObjectSpace::AllocationTracer
     }
   end
 
-  def self.collect_lifetime_talbe
+  def self.collect_lifetime_table
     ObjectSpace::AllocationTracer.lifetime_table_setup true
 
     if block_given?
