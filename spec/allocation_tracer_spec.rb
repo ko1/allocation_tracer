@@ -235,9 +235,9 @@ describe ObjectSpace::AllocationTracer do
     end
   end
 
-  describe 'ObjectSpace::AllocationTracer.collect_lifetime_talbe' do
+  describe 'ObjectSpace::AllocationTracer.collect_lifetime_table' do
     it 'should collect lifetime table' do
-      table = ObjectSpace::AllocationTracer.collect_lifetime_talbe do
+      table = ObjectSpace::AllocationTracer.collect_lifetime_table do
         100000.times{
           Object.new
           ''

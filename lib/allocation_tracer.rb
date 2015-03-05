@@ -30,7 +30,7 @@ module ObjectSpace::AllocationTracer
     end
   end
 
-  def self.collect_lifetime_talbe_stop
+  def self.collect_lifetime_table_stop
     ObjectSpace::AllocationTracer.stop
     result = ObjectSpace::AllocationTracer.lifetime_table
     ObjectSpace::AllocationTracer.lifetime_table_setup false
