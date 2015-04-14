@@ -215,7 +215,7 @@ current age.
 
 ## Rack middleware
 
-You can use 
+You can use AllocationTracer via rack middleware.
 
 ```ruby
 require 'rack'
@@ -229,7 +229,7 @@ get '/' do
 end
 ```
 
-When you access to `http://host/allocation_tracer/` then you can see table of allocation tracer.
+When you access to `http://host/allocation_tracer/` then you can see a table of allocation tracer.
 
 You can access the following pages.
 
