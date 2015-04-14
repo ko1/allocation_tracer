@@ -58,7 +58,6 @@ module Rack
           result = ObjectSpace::AllocationTracer.result
           ObjectSpace::AllocationTracer.pause
 
-          p env["PATH_INFO"]
           case env["PATH_INFO"]
           when /lifetime_table/
             raise "Unsupported: lifetime_table"
