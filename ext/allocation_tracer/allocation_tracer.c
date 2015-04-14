@@ -102,9 +102,10 @@ delete_unique_str(st_table *tbl, const char *str)
     if (str) {
 	st_data_t n;
 
-	st_lookup(tbl, (st_data_t)str, &n);
+	if (st_lookup(tbl, (st_data_t)str, &n) == 0) rb_bug("delete_unique_str: unreachable");
+
 	if (n == 1) {
-	    st_delete(tbl, (st_data_t *)&str, 0);
+	    st_delete(tbl, (st_data_t *)&str, NULL);
 	    ruby_xfree((char *)str);
 	}
 	else {
@@ -522,6 +523,9 @@ type_sym(int type)
 		TYPE_NAME(T_SYMBOL);
 		TYPE_NAME(T_FIXNUM);
 		TYPE_NAME(T_UNDEF);
+#ifdef T_IMEMO /* introduced from Rub 2.3 */
+		TYPE_NAME(T_IMEMO);
+#endif
 		TYPE_NAME(T_NODE);
 		TYPE_NAME(T_ICLASS);
 		TYPE_NAME(T_ZOMBIE);
@@ -559,7 +563,6 @@ aggregate_result_i(st_data_t key, st_data_t val, void *data)
 	const char *path = (const char *)key_buff->data[i++];
 	if (path) {
 	    rb_ary_push(k, rb_str_new2(path));
-	    delete_unique_str(arg->str_table, path);
 	}
 	else {
 	    rb_ary_push(k, Qnil);
