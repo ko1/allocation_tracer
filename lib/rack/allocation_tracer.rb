@@ -16,11 +16,16 @@ module Rack
         @sort_order = (0..7).to_a
       end
 
-      def allocation_trace_page result
+      def allocation_trace_page result, env
+        if /\As=(\d+)/ =~ env["QUERY_STRING"]
+          top = $1.to_i
+          @sort_order.unshift top if @sort_order.delete top
+        end
+
         table = result.map{|(file, line, klass), (count, oldcount, total_age, min_age, max_age, memsize)|
           ["#{Rack::Utils.escape_html(file)}:#{'%04d' % line}",
-          klass ? klass.name : '<internal>',
-          count, oldcount, total_age / Float(count), min_age, max_age, memsize]
+           klass ? klass.name : '<internal>',
+           count, oldcount, total_age / Float(count), min_age, max_age, memsize]
         }.sort_by{|vs|
           ary = @sort_order.map{|i| Numeric === vs[i] ? -vs[i] : vs[i]}
         }
@@ -62,12 +67,7 @@ module Rack
           when /freed_count_table/
             text = freed_count_table_page
           else
-            text = allocation_trace_page result
-          end
-
-          if /\As=(\d+)/ =~ env["QUERY_STRING"]
-            top = $1.to_i
-            @sort_order.unshift top if @sort_order.delete top
+            text = allocation_trace_page result, env
           end
 
           begin
