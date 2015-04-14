@@ -34,7 +34,8 @@ describe ObjectSpace::AllocationTracer do
           i.to_s
         }
       end
-      #GC.start
+
+      GC.start
       #pp result
 
       expect(result[[__FILE__, line + 0]][0]).to be >= 50_000
