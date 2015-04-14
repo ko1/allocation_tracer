@@ -11,7 +11,7 @@ module Rack
     end
 
     class Tracer
-      def initialize app, view_page_path: nil
+      def initialize app
         @app = app
         @sort_order = (0..7).to_a
       end
