@@ -213,6 +213,30 @@ Note that these numbers includes living objects and dead objects.  For
 dead objects, age means lifetime. For living objects, age means 
 current age.
 
+## Rack middleware
+
+You can use 
+
+```ruby
+require 'rack'
+require 'sinatra'
+require 'rack/allocation_tracer'
+
+use Rack::AllocationTracerMiddleware
+
+get '/' do
+  'foo'
+end
+```
+
+When you access to `http://host/allocation_tracer/` then you can see table of allocation tracer.
+
+You can access the following pages.
+
+* http://host/allocation_tracer/
+* http://host/allocation_tracer/allocated_count_table
+* http://host/allocation_tracer/freed_count_table_page
+
 ## Contributing
 
 1. Fork it ( http://github.com/ko1/allocation_tracer/fork )
