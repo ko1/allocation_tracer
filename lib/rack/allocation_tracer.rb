@@ -30,7 +30,7 @@ module Rack
           ary = @sort_order.map{|i| Numeric === vs[i] ? -vs[i] : vs[i]}
         }
 
-        headers = %w(path class count old_count average_age max_age min_age memsize).map.with_index{|e, i|
+        headers = %w(path class count old_count average_age min_age max_age memsize).map.with_index{|e, i|
           "<th><a href='./?s=#{i}'>#{e}</a></th>"
         }.join("\n")
         header = "<tr>#{headers}</tr>"
