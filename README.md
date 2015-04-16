@@ -236,6 +236,7 @@ You can access the following pages.
 * http://host/allocation_tracer/
 * http://host/allocation_tracer/allocated_count_table
 * http://host/allocation_tracer/freed_count_table_page
+* http://host/allocation_tracer/lifetime_table
 
 ## Contributing
 
