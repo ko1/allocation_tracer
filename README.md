@@ -238,6 +238,15 @@ You can access the following pages.
 * http://host/allocation_tracer/freed_count_table_page
 * http://host/allocation_tracer/lifetime_table
 
+The following pages are demonstration Rails app on Heroku environment.
+
+* http://protected-journey-7206.herokuapp.com/allocation_tracer/
+* http://protected-journey-7206.herokuapp.com/allocation_tracer/allocated_count_table
+* http://protected-journey-7206.herokuapp.com/allocation_tracer/freed_count_table_page
+* http://protected-journey-7206.herokuapp.com/allocation_tracer/lifetime_table
+
+Source code of this demo app is https://github.com/ko1/tracer_demo_rails_app. You only need to modify like https://github.com/ko1/tracer_demo_rails_app/blob/master/config.ru to use it on Rails.
+
 ## Contributing
 
 1. Fork it ( http://github.com/ko1/allocation_tracer/fork )
