@@ -53,24 +53,38 @@ module Rack
         count_table_page ObjectSpace::AllocationTracer.freed_count_table
       end
 
+      def lifetime_table_page
+        table = []
+        max_age = 0
+        ObjectSpace::AllocationTracer.lifetime_table.each{|type, ages|
+          max_age = [max_age, ages.size - 1].max
+          table << [type, *ages]
+        }
+        headers = ['type', *(0..max_age)].map{|e| "<th>#{e}</th>"}.join("\n")
+        body =  table.map{|cols|
+          "<tr>" + cols.map{|c| "<td>#{c}</td>"}.join("\n") + "</tr>"
+        }.join("\n")
+        "<table border='1'><tr>#{headers}</tr>\n#{body}</table>"
+      end
+
       def call env
         if /\A\/allocation_tracer\// =~ env["PATH_INFO"]
           result = ObjectSpace::AllocationTracer.result
           ObjectSpace::AllocationTracer.pause
 
-          case env["PATH_INFO"]
-          when /lifetime_table/
-            raise "Unsupported: lifetime_table"
-          when /allocated_count_table/
-            text = allocated_count_table_page
-          when /freed_count_table/
-            text = freed_count_table_page
-          else
-            text = allocation_trace_page result, env
-          end
-
           begin
-            [200, {"Content-Type" => "text/html"}, [text]]
+            html = case env["PATH_INFO"]
+                   when /lifetime_table/
+                     lifetime_table_page
+                   when /allocated_count_table/
+                     allocated_count_table_page
+                   when /freed_count_table/
+                     freed_count_table_page
+                   else
+                     allocation_trace_page result, env
+                   end
+            #
+            [200, {"Content-Type" => "text/html"}, [html]]
           ensure
             ObjectSpace::AllocationTracer.resume
           end
@@ -84,6 +98,7 @@ module Rack
       def initialize *args
         super
         ObjectSpace::AllocationTracer.setup %i(path line class)
+        ObjectSpace::AllocationTracer.lifetime_table_setup true
         ObjectSpace::AllocationTracer.start
       end
     end
