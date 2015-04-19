@@ -24,11 +24,24 @@ module Rack
 
         table = result.map{|(file, line, klass), (count, oldcount, total_age, min_age, max_age, memsize)|
           ["#{Rack::Utils.escape_html(file)}:#{'%04d' % line}",
-           klass ? klass.name : '<internal>',
-           count, oldcount, total_age / Float(count), min_age, max_age, memsize]
-        }.sort_by{|vs|
-          ary = @sort_order.map{|i| Numeric === vs[i] ? -vs[i] : vs[i]}
+            Rack::Utils.escape_html(klass ? klass.name : '<internal>'),
+            count, oldcount, total_age / Float(count), min_age, max_age, memsize]
         }
+
+        begin
+          table = table.sort_by{|vs|
+            ary = @sort_order.map{|i| Numeric === vs[i] ? -vs[i] : vs[i]}
+          }
+        rescue
+          ts = []
+          table.each{|*cols|
+            cols.each.with_index{|c, i|
+              h = (ts[i] ||= Hash.new(0))
+              h[c.class] += 1
+            }
+          }
+          return "<pre>Sorting error\n" + Rack::Utils.escape_html(h.inspect) + "</pre>"
+        end
 
         headers = %w(path class count old_count average_age min_age max_age memsize).map.with_index{|e, i|
           "<th><a href='./?s=#{i}'>#{e}</a></th>"
