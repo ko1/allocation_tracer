@@ -81,7 +81,7 @@ module Rack
       end
 
       def call env
-        if /\A\/allocation_tracer\// =~ env["PATH_INFO"]
+        if /\A\/allocation_tracer(?:\/|$)/ =~ env["PATH_INFO"]
           result = ObjectSpace::AllocationTracer.result
           ObjectSpace::AllocationTracer.pause
 
