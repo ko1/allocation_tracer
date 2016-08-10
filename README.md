@@ -127,7 +127,7 @@ There are only string creation. This is because unused array creation is
 ommitted by optimizer.
 
 Simply you can require `allocation_tracer/trace' to start allocation 
-tracer and output the aggregated information into stdot at the end of 
+tracer and output the aggregated information into stdout at the end of 
 program.
 
 ```ruby
@@ -153,7 +153,7 @@ test.rb 6       50000   3       41490   0       5       0
 test.rb 7       50000   7       41497   0       5       0
 ```
 
-(tab separated colums)
+(tab separated columns)
 
 ### Total Allocations / Free
 
