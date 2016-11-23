@@ -248,6 +248,20 @@ The following pages are demonstration Rails app on Heroku environment.
 
 Source code of this demo app is https://github.com/ko1/tracer_demo_rails_app. You only need to modify like https://github.com/ko1/tracer_demo_rails_app/blob/master/config.ru to use it on Rails.
 
+## Development
+
+Compile the code:
+
+```
+$ rake compile
+```
+
+Run the tests:
+
+```
+$ rake spec
+```
+
 ## Contributing
 
 1. Fork it ( http://github.com/ko1/allocation_tracer/fork )
