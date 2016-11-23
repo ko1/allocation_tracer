@@ -719,6 +719,32 @@ aggregate_result(struct traceobj_arg *arg)
     return aar.result;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.result  -> hash
+ *
+ *  Returns the current allocated results
+ *
+ *  If you need to know the results of allocation tracing
+ *  without pausing or stopping tracing you can use this method.
+ *
+ *  Example:
+ *
+ *    require 'allocation_tracer'
+ *
+ *    ObjectSpace::AllocationTracer.trace do
+ *      3.times do |i|
+ *        a = "#{i}"
+ *        puts ObjectSpace::AllocationTracer.result
+ *      end
+ *    end
+ *
+ *    # => {["scratch.rb", 5]=>[2, 0, 0, 0, 0, 0]}
+ *    # => {["scratch.rb", 5]=>[4, 0, 0, 0, 0, 0], ["scratch.rb", 6]=>[16, 0, 0, 0, 0, 0]}
+ *    # => {["scratch.rb", 5]=>[6, 0, 0, 0, 0, 0], ["scratch.rb", 6]=>[38, 0, 0, 0, 0, 0]}
+ *
+ */
 static VALUE
 allocation_tracer_result(VALUE self)
 {
@@ -731,6 +757,17 @@ allocation_tracer_result(VALUE self)
     return result;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.clear  -> NilClass
+ *
+ *  Clears the current allocated results
+ *
+ *  If you need to clear the results of allocation tracing
+ *  without stopping tracing you can use this method.
+ *
+ */
 static VALUE
 allocation_tracer_clear(VALUE self)
 {
@@ -738,6 +775,9 @@ allocation_tracer_clear(VALUE self)
     return Qnil;
 }
 
+/*! Used in allocation_tracer_trace
+*   to ensure that a result is returned.
+*/
 static VALUE
 allocation_tracer_trace_i(VALUE self)
 {
@@ -745,6 +785,35 @@ allocation_tracer_trace_i(VALUE self)
     return allocation_tracer_result(self);
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.trace { |a, b| block } -> array
+ *     ObjectSpace::AllocationTracer.start                  -> NilClass
+ *
+ *  Traces object allocations inside of the block
+ *
+ *  Objects created inside of the block will be tracked by the tracer.
+ *  If the method is called without a block, the tracer will start
+ *  and continue until ObjectSpace::AllocationTracer.stop is called.
+ *
+ *  Output can be customized with ObjectSpace::AllocationTracer.setup.
+ *
+ *  Example:
+ *
+ *     pp ObjectSpace::AllocationTracer.trace{
+ *       50_000.times{|i|
+ *         i.to_s
+ *         i.to_s
+ *         i.to_s
+ *       }
+ *     }
+ *
+ *     # => {["test.rb", 6]=>[50000, 0, 47440, 0, 1, 0],
+ *           ["test.rb", 7]=>[50000, 4, 47452, 0, 6, 0],
+ *           ["test.rb", 8]=>[50000, 7, 47456, 0, 6, 0]}
+ *
+ */
 static VALUE
 allocation_tracer_trace(VALUE self)
 {
@@ -766,6 +835,24 @@ allocation_tracer_trace(VALUE self)
     return Qnil;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.stop                  -> array
+ *
+ *  Stops allocation tracing if currently running
+ *
+ *  When allocation tracing is started via ObjectSpace::AllocationTracer.start
+ *  it will continue until this method is called.
+ *
+ *  Example:
+ *    pp ObjectSpace::AllocationTracer.stop
+ *
+ *    # => {["test.rb", 6]=>[50000, 0, 47440, 0, 1, 0],
+ *          ["test.rb", 7]=>[50000, 4, 47452, 0, 6, 0],
+ *          ["test.rb", 8]=>[50000, 7, 47456, 0, 6, 0]}
+ *
+ */
 static VALUE
 allocation_tracer_stop(VALUE self)
 {
@@ -777,6 +864,17 @@ allocation_tracer_stop(VALUE self)
     return result;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.pause                  -> NilClass
+ *
+ *  Pauses allocation tracing
+ *
+ *  Use in conjunction with ObjectSpace::AllocationTracer.start and
+ *  ObjectSpace::AllocationTracer.stop.
+ *
+ */
 static VALUE
 allocation_tracer_pause(VALUE self)
 {
@@ -784,6 +882,16 @@ allocation_tracer_pause(VALUE self)
     return Qnil;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.resume                  -> NilClass
+ *
+ *  Resumes allocation tracing if previously paused
+ *
+ *  See ObjectSpace::AllocationTracer.pause to pause allocation tracing.
+ *
+ */
 static VALUE
 allocation_tracer_resume(VALUE self)
 {
@@ -791,6 +899,43 @@ allocation_tracer_resume(VALUE self)
     return Qnil;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.setup([symbol])       -> NilClass
+ *
+ *  Change the format that results will be returned.
+ *
+ *  Takes an array of symbols containing the order you would like the output
+ *  to be returned. Valid options:
+ *
+ *    - :path
+ *    - :line
+ *    - :type
+ *    - :class
+ *
+ *  Example:
+ *
+ *     ObjectSpace::AllocationTracer.setup(%i{path line type})
+ *
+ *     result = ObjectSpace::AllocationTracer.trace do
+ *       50_000.times{|i|
+ *         a = [i.to_s]
+ *         b = {i.to_s => nil}
+ *         c = (i.to_s .. i.to_s)
+ *       }
+ *     end
+ *
+ *     pp result
+ *
+ *     # => {["test.rb", 8, :T_STRING]=>[50000, 15, 49165, 0, 16, 0],
+ *           ["test.rb", 8, :T_ARRAY]=>[50000, 12, 49134, 0, 16, 0],
+ *           ["test.rb", 9, :T_STRING]=>[100000, 27, 98263, 0, 16, 0],
+ *           ["test.rb", 9, :T_HASH]=>[50000, 16, 49147, 0, 16, 8998848],
+ *           ["test.rb", 10, :T_STRING]=>[100000, 36, 98322, 0, 16, 0],
+ *           ["test.rb", 10, :T_STRUCT]=>[50000, 16, 49147, 0, 16, 0]}
+ *
+ */
 static VALUE
 allocation_tracer_setup(int argc, VALUE *argv, VALUE self)
 {
@@ -824,6 +969,19 @@ allocation_tracer_setup(int argc, VALUE *argv, VALUE self)
     return Qnil;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.header   -> array
+ *
+ *  Return headers
+ *
+ *  Example:
+ *
+ *     puts ObjectSpace::AllocationTracer.header
+ *     => [:path, :line, :count, :old_count, :total_age, :min_age, :max_age, :total_memsize]
+ *
+ */
 VALUE
 allocation_tracer_header(VALUE self)
 {
@@ -844,6 +1002,15 @@ allocation_tracer_header(VALUE self)
     return ary;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.lifetime_table_setup(true)   -> NilClass
+ *
+ * Enables tracing for the generation of objects
+ *
+ * See ObjectSpace::AllocationTracer.lifetime_table for an example.
+ */
 static VALUE
 allocation_tracer_lifetime_table_setup(VALUE self, VALUE set)
 {
@@ -865,6 +1032,37 @@ allocation_tracer_lifetime_table_setup(VALUE self, VALUE set)
     return Qnil;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.lifetime_table   -> hash
+ *
+ * Returns generations for objects
+ *
+ * Count is for both living (retained) and dead (freed) objects.
+ *
+ * The key is the type of objects, for example `T_OBJECT` for Ruby objects
+ * or `T_STRING` for Ruby strings.
+ *
+ * The value is an array containing a count of the objects, the index is
+ * the generation.
+ *
+ * Example:
+ *
+ *     require 'pp'
+ *     require 'allocation_tracer'
+ *
+ *     ObjectSpace::AllocationTracer.lifetime_table_setup true
+ *     result = ObjectSpace::AllocationTracer.trace do
+ *       100000.times{
+ *         Object.new
+ *         ''
+ *       }
+ *     end
+ *     pp ObjectSpace::AllocationTracer.lifetime_table
+ *     # => {:T_OBJECT=>[3434, 96563, 0, 0, 1, 0, 0, 2],
+ *           :T_STRING=>[3435, 96556, 2, 1, 1, 1, 1, 1, 2]}
+ */
 static VALUE
 allocation_tracer_lifetime_table(VALUE self)
 {
@@ -873,6 +1071,31 @@ allocation_tracer_lifetime_table(VALUE self)
     return result;
 }
 
+
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.allocated_count_table   -> hash
+ *
+ * Returns allocation count totals for Ruby object types
+ *
+ * Returns a hash showing the number of each type of object that has been allocated.
+ *
+ * Example:
+ *
+ *     require 'allocation_tracer'
+ *
+ *     ObjectSpace::AllocationTracer.trace do
+ *       1000.times {
+ *         ["foo", {}]
+ *       }
+ *     end
+ *     p allocated: ObjectSpace::AllocationTracer.allocated_count_table
+ *     {:allocated=>{:T_NONE=>0, :T_OBJECT=>0, :T_CLASS=>0, :T_MODULE=>0, :T_FLOAT=>0, :T_STRING=>1000, :T_REGEXP=>0, :T_ARRAY=>1000, :T_HASH=>1000, :T_STRUCT=>0, :T_BIGNUM=>0, :T_FILE=>0, :T_DATA=>0, :T_MATCH=>0, :T_COMPLEX=>0, :T_RATIONAL=>0, :unknown=>0, :T_NIL=>0, :T_TRUE=>0, :T_FALSE=>0, :T_SYMBOL=>0, :T_FIXNUM=>0, :T_UNDEF=>0, :T_NODE=>0, :T_ICLASS=>0, :T_ZOMBIE=>0}}
+ *
+ *     p freed: ObjectSpace::AllocationTracer.freed_count_table
+ *     {:freed=>{:T_NONE=>0, :T_OBJECT=>0, :T_CLASS=>0, :T_MODULE=>0, :T_FLOAT=>0, :T_STRING=>1871, :T_REGEXP=>41, :T_ARRAY=>226, :T_HASH=>7, :T_STRUCT=>41, :T_BIGNUM=>0, :T_FILE=>50, :T_DATA=>25, :T_MATCH=>47, :T_COMPLEX=>0, :T_RATIONAL=>0, :unknown=>0, :T_NIL=>0, :T_TRUE=>0, :T_FALSE=>0, :T_SYMBOL=>0, :T_FIXNUM=>0, :T_UNDEF=>0, :T_NODE=>932, :T_ICLASS=>0, :T_ZOMBIE=>0}}
+ */
 static VALUE
 allocation_tracer_allocated_count_table(VALUE self)
 {
@@ -887,6 +1110,18 @@ allocation_tracer_allocated_count_table(VALUE self)
     return h;
 }
 
+/*
+ *
+ *  call-seq:
+ *     ObjectSpace::AllocationTracer.freed_count_table   -> hash
+ *
+ * Returns freed count totals for Ruby object types
+ *
+ * Returns a hash showing the number of each type of object that has been freed.
+ *
+ * See ObjectSpace::AllocationTracer.allocated_count_table for example usage
+ *
+ */
 static VALUE
 allocation_tracer_freed_count_table(VALUE self)
 {
