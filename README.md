@@ -2,8 +2,8 @@
 
 This module allows to trace object allocation.
 
-This feature is similar to https://github.com/SamSaffron/memory_profiler 
-and https://github.com/srawlins/allocation_stats. But this feature 
+This feature is similar to https://github.com/SamSaffron/memory_profiler
+and https://github.com/srawlins/allocation_stats. But this feature
 focused on `age' of objects.
 
 This gem was separated from gc_tracer.gem.
@@ -60,7 +60,7 @@ will show
  ["test.rb", 8]=>[50000, 7, 47456, 0, 6, 0]}
 ```
 
-In this case, 
+In this case,
 * 50,000 objects are created at `test.rb:6' and
   * 0 old objects created.
   * 47,440 is total age of objects created at this line (average age of object created at this line is 47440/50000 = 0.9488).
@@ -68,7 +68,7 @@ In this case,
   * 1 is maximum age.
   * 0 total memory consumption without RVALUE
 
-You can also specify `type' in GC::Tracer.setup_allocation_tracing() to 
+You can also specify `type' in GC::Tracer.setup_allocation_tracing() to
 specify what should be keys to aggregate like that.
 
 ```ruby
@@ -123,11 +123,11 @@ and it prints:
 {["test.rb", 8, :T_STRING]=>[25015, 5, 16299, 0, 2, 0]}
 ```
 
-There are only string creation. This is because unused array creation is 
+There are only string creation. This is because unused array creation is
 ommitted by optimizer.
 
-Simply you can require `allocation_tracer/trace' to start allocation 
-tracer and output the aggregated information into stdout at the end of 
+Simply you can require `allocation_tracer/trace' to start allocation
+tracer and output the aggregated information into stdout at the end of
 program.
 
 ```ruby
@@ -182,7 +182,7 @@ The output of the script will look like this:
 
 ### Lifetime table
 
-You can collect lifetime statistics with 
+You can collect lifetime statistics with
 ObjectSpace::AllocationTracer.lifetime_table method.
 
 ```ruby
@@ -206,12 +206,12 @@ will show
  :T_STRING=>[3435, 96556, 2, 1, 1, 1, 1, 1, 2]}
 ```
 
-This output means that the age of 3434 T_OBJECT objects are 0, 96563 
-objects are 1 and 2 objects are 7. Also the age of 3435 T_STRING 
+This output means that the age of 3434 T_OBJECT objects are 0, 96563
+objects are 1 and 2 objects are 7. Also the age of 3435 T_STRING
 objects are 0, 96556 objects are 1 and so on.
 
-Note that these numbers includes living objects and dead objects.  For 
-dead objects, age means lifetime. For living objects, age means 
+Note that these numbers includes living objects and dead objects.  For
+dead objects, age means lifetime. For living objects, age means
 current age.
 
 ## Rack middleware
