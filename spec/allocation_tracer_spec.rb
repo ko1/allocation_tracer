@@ -139,8 +139,8 @@ describe ObjectSpace::AllocationTracer do
         line = __LINE__ + 3
         ObjectSpace::AllocationTracer.setup(%i(path line type))
         result = ObjectSpace::AllocationTracer.trace do
-          a = [Object.new]
-          b = {Object.new => 'foo'}
+          _a = [Object.new]
+          _b = {Object.new => 'foo'}
         end
 
         expect(result.length).to be 5
@@ -155,8 +155,8 @@ describe ObjectSpace::AllocationTracer do
         line = __LINE__ + 3
         ObjectSpace::AllocationTracer.setup(%i(path line class))
         result = ObjectSpace::AllocationTracer.trace do
-          a = [Object.new]
-          b = {Object.new => 'foo'}
+          _a = [Object.new]
+          _b = {Object.new => 'foo'}
         end
 
         expect(result.length).to be 5
