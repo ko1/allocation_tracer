@@ -5,7 +5,7 @@ module ObjectSpace::AllocationTracer
 
   def self.output_lifetime_table table
     out = (file = ENV['RUBY_ALLOCATION_TRACER_LIFETIME_OUT']) ? open(File.expand_path(file), 'w') : STDOUT
-    max_lines = table.inject(0){|r, (type, lines)| r < lines.size ? lines.size : r}
+    max_lines = table.inject(0){|r, (_type, lines)| r < lines.size ? lines.size : r}
     out.puts "type\t" + (0...max_lines).to_a.join("\t")
     table.each{|type, line|
       out.puts "#{type}\t#{line.join("\t")}"

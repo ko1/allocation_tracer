@@ -427,9 +427,10 @@ enable_newobj_hook(void)
 
     check_tracer_running();
 
-    if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
+    if (!rb_ivar_defined(rb_mAllocationTracer, rb_intern("newobj_hook"))) {
 	rb_raise(rb_eRuntimeError, "not started.");
     }
+    newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"));
     if (rb_tracepoint_enabled_p(newobj_hook)) {
 	rb_raise(rb_eRuntimeError, "newobj hooks is already enabled.");
     }
@@ -444,7 +445,7 @@ disable_newobj_hook(void)
 
     check_tracer_running();
 
-    if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
+    if ((!rb_ivar_defined(rb_mAllocationTracer, rb_intern("newobj_hook"))) || ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil)) {
 	rb_raise(rb_eRuntimeError, "not started.");
     }
     if (rb_tracepoint_enabled_p(newobj_hook) == Qfalse) {
@@ -460,11 +461,12 @@ start_alloc_hooks(VALUE mod)
     VALUE newobj_hook, freeobj_hook;
     struct traceobj_arg *arg = get_traceobj_arg();
 
-    if ((newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"))) == Qnil) {
+    if (!rb_ivar_defined(rb_mAllocationTracer, rb_intern("newobj_hook"))) {
 	rb_ivar_set(rb_mAllocationTracer, rb_intern("newobj_hook"), newobj_hook = rb_tracepoint_new(0, RUBY_INTERNAL_EVENT_NEWOBJ, newobj_i, arg));
 	rb_ivar_set(rb_mAllocationTracer, rb_intern("freeobj_hook"), freeobj_hook = rb_tracepoint_new(0, RUBY_INTERNAL_EVENT_FREEOBJ, freeobj_i, arg));
     }
     else {
+	newobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("newobj_hook"));
 	freeobj_hook = rb_ivar_get(rb_mAllocationTracer, rb_intern("freeobj_hook"));
     }
 
