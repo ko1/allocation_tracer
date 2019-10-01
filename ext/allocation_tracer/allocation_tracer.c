@@ -230,7 +230,14 @@ newobj_i(VALUE tpval, void *data)
     VALUE obj = rb_tracearg_object(tparg);
     VALUE path = rb_tracearg_path(tparg);
     VALUE line = rb_tracearg_lineno(tparg);
-    VALUE klass = RBASIC_CLASS(obj);
+    VALUE klass = Qnil;
+    switch(BUILTIN_TYPE(obj)) {
+        case T_NODE:
+        case T_IMEMO:
+            break;
+        default:
+            klass = RBASIC_CLASS(obj);
+    }
     const char *path_cstr = RTEST(path) ? make_unique_str(arg->str_table, RSTRING_PTR(path), RSTRING_LEN(path)) : NULL;
 
     if (st_lookup(arg->object_table, (st_data_t)obj, (st_data_t *)&info)) {
